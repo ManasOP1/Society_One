@@ -1,0 +1,24 @@
+# EAS Build upload ignore — keep Gradle/native caches out of the tarball
+# (Windows often locks android/.gradle/*.lock and breaks compress/upload)
+
+android/.gradle/
+**/.gradle/
+android/app/build/
+android/build/
+android/.cxx/
+**/.cxx/
+*.lock
+
+# Local / tooling junk
+.expo/
+dist/
+web-build/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+
+# Heavy / unused
+node_modules/
+**/node_modules/
