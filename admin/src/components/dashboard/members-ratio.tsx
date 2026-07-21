@@ -9,22 +9,20 @@ export function MembersRatio() {
   const { members } = useAuth();
 
   const data = useMemo(() => {
-    const owners = members.filter(
-      (m) => !m.tenant || m.tenant === "—" || m.tenant.trim() === ""
-    ).length;
-    const tenants = Math.max(0, members.length - owners);
+    const withApp = members.filter((m) => m.hasAppLogin).length;
+    const withoutApp = Math.max(0, members.length - withApp);
     const total = members.length || 1;
     return [
       {
-        name: "Owner-occupied",
-        value: Math.round((owners / total) * 100),
-        count: owners,
+        name: "App login",
+        value: Math.round((withApp / total) * 100),
+        count: withApp,
         color: "#4F46E5",
       },
       {
-        name: "With tenant",
-        value: Math.round((tenants / total) * 100),
-        count: tenants,
+        name: "No app login",
+        value: Math.round((withoutApp / total) * 100),
+        count: withoutApp,
         color: "#38BDF8",
       },
     ];
@@ -34,7 +32,7 @@ export function MembersRatio() {
     <div className="h-full min-w-0 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-5 dark:border-slate-700 dark:bg-slate-800">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-[15px] font-bold text-slate-900 dark:text-white">
-          Occupancy mix
+          Member app adoption
         </h3>
         <Link
           href="/members"

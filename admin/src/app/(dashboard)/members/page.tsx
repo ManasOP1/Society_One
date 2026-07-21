@@ -315,7 +315,7 @@ export default function MembersPage() {
       setSaveError("App password is required for new members.");
       return;
     }
-    if (payload.maintenanceAmount <= 0) {
+    if ((payload.maintenanceAmount ?? 0) <= 0) {
       setSaveError(
         "Enter a monthly maintenance amount greater than 0 (set BHK defaults in Settings → Maintenance rules)."
       );
