@@ -154,6 +154,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
+  const loadSocietyData = useCallback(
+    async (u: ApiUser) => {
+      if (!u.societyId) {
+        setSociety(null);
+        return;
+      }
+      membersLoadedFor.current = u.societyId;
+      void Promise.all([
+        loadSociety(u),
+        loadMembers(u.societyId),
+        settingsService.fetch(u.societyId, { silent: true }).catch(() => undefined),
+      ]);
+    },
+    [loadSociety, loadMembers]
+  );
+
   const refreshSocieties = useCallback(() => {
     void (async () => {
       try {
@@ -180,15 +196,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.error("Failed to load societies from API:", apiErrorMessage(e));
           });
         } else if (me.societyId) {
-          const s = await societyService.me();
-          setSociety(
-            s
-              ? { ...s, id: me.societyId, adminName: me.name, adminEmail: me.email }
-              : null
-          );
           membersLoadedFor.current = me.societyId;
-          await loadMembers(me.societyId);
-          void settingsService.fetch(me.societyId).catch(() => undefined);
+          void loadSocietyData(me as ApiUser);
         }
       } catch {
         clearApiSession();
@@ -198,7 +207,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
       }
     })();
-  }, [loadMembers]);
+  }, [loadSocietyData]);
 
   // After interactive login, load society directory or members without a full-page reload.
   useEffect(() => {
@@ -208,11 +217,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     if (user.societyId && membersLoadedFor.current !== user.societyId) {
-      membersLoadedFor.current = user.societyId;
-      void loadSociety(user);
-      void loadMembers(user.societyId);
+      void loadSocietyData(user);
     }
-  }, [user, isLoading, loadSociety, loadMembers, refreshSocieties]);
+  }, [user, isLoading, loadSocietyData, refreshSocieties]);
 
   // Poll member list while the admin console is open (settings/invoices use their own hooks).
   useEffect(() => {
@@ -221,6 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     const tick = () => {
+      if (document.visibilityState !== "visible") return;
       void loadMembers(user.societyId!);
     };
 
@@ -229,7 +237,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       debounceTimer = setTimeout(tick, LIVE_SYNC_DEBOUNCE_MS);
     };
 
-    tick();
     const id = window.setInterval(tick, LIVE_SYNC_MS);
     window.addEventListener("societyone-storage", scheduleDebounced);
     window.addEventListener("focus", scheduleDebounced);
@@ -245,7 +252,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(
     async (_societyId: string, email: string, password: string): Promise<string | null> => {
       try {
-        setIsLoading(true);
         const res = await authApi.login(email, password);
         if (res.user.role !== "SOCIETY_ADMIN" && res.user.role !== "COMMITTEE_MEMBER") {
           return "This account is not a society admin. Use the Super Admin login if applicable.";
@@ -256,35 +262,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
         setUser(res.user);
         if (res.user.societyId) {
-          const s = await societyService.me();
-          setSociety(
-            s
-              ? {
-                  ...s,
-                  id: res.user.societyId!,
-                  adminName: res.user.name,
-                  adminEmail: res.user.email,
-                }
-              : null
-          );
-          membersLoadedFor.current = res.user.societyId;
-          await loadMembers(res.user.societyId);
-          void settingsService.fetch(res.user.societyId).catch(() => undefined);
+          void loadSocietyData(res.user);
         }
         return null;
       } catch (e) {
         return apiErrorMessage(e);
-      } finally {
-        setIsLoading(false);
       }
     },
-    [loadMembers]
+    [loadSocietyData]
   );
 
   const loginSuperAdmin = useCallback(
     async (email: string, password: string): Promise<string | null> => {
       try {
-        setIsLoading(true);
         const res = await authApi.login(email, password);
         if (res.user.role !== "SUPER_ADMIN") {
           return "Invalid Super Admin credentials.";
@@ -294,14 +284,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           res.user
         );
         setUser(res.user);
-        await societyService.list().then(setSocieties).catch((e) => {
+        void societyService.list().then(setSocieties).catch((e) => {
           console.error("Failed to load societies from API:", apiErrorMessage(e));
         });
         return null;
       } catch (e) {
         return apiErrorMessage(e);
-      } finally {
-        setIsLoading(false);
       }
     },
     []
@@ -346,7 +334,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ...prev.filter((m) => m.email !== member.email),
           mapApiMember(created, society.id),
         ]);
-        notifyDataUpdated();
         return null;
       } catch (e) {
         return apiErrorMessage(e);
@@ -372,7 +359,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             m.id === id ? mapApiMember(updated, society.id) : m
           )
         );
-        notifyDataUpdated();
         return null;
       } catch (e) {
         return apiErrorMessage(e);

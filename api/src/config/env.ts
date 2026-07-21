@@ -26,6 +26,7 @@ export const envSchema = z
     REDIS_HOST: z.string().default('127.0.0.1'),
     REDIS_PORT: z.coerce.number().default(6379),
     REDIS_PASSWORD: z.string().optional(),
+    BCRYPT_ROUNDS: z.coerce.number().min(8).max(14).default(10),
     /** Set true for Upstash / other TLS Redis (e.g. rediss://). */
     REDIS_TLS: z
       .string()

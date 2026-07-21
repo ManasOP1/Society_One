@@ -109,7 +109,8 @@ export default function MembersPage() {
 
   useEffect(() => {
     if (!society) return;
-    void settingsService.fetch(society.id).then(setBillingSettings);
+    setBillingSettings(settingsService.get(society.id));
+    void settingsService.fetch(society.id, { silent: true }).then(setBillingSettings);
   }, [society]);
 
   useEffect(() => {

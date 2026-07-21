@@ -8,6 +8,7 @@ import { Pool } from 'pg';
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
   private readonly pool: Pool;
+  private readonly tenantIdCache = new Map<string, string>();
 
   constructor(config: ConfigService) {
     const rawConnectionString = config.getOrThrow<string>('DATABASE_URL');
@@ -44,11 +45,15 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   /** Resolve the owning tenantId for a society; required on every child-row insert. */
   async getSocietyTenantId(societyId: string): Promise<string> {
+    const cached = this.tenantIdCache.get(societyId);
+    if (cached) return cached;
+
     const society = await this.society.findUnique({
       where: { id: societyId },
       select: { tenantId: true },
     });
     if (!society) throw new NotFoundException('Society not found');
+    this.tenantIdCache.set(societyId, society.tenantId);
     return society.tenantId;
   }
 

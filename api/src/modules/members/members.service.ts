@@ -5,6 +5,7 @@
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { Role } from '../../common/types/roles';
@@ -97,10 +98,15 @@ function serializeMember(member: MemberWithFlats) {
 
 @Injectable()
 export class MembersService {
+  private readonly bcryptRounds: number;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-  ) {}
+    config: ConfigService,
+  ) {
+    this.bcryptRounds = config.get<number>('BCRYPT_ROUNDS') ?? 10;
+  }
 
   async list(
     societyId: string,
@@ -163,9 +169,10 @@ export class MembersService {
       throw new ConflictException('A user with this email already exists');
     }
 
-    const tenantId = await this.prisma.getSocietyTenantId(societyId);
+    const tenantId =
+      actor.tenantId ?? (await this.prisma.getSocietyTenantId(societyId));
     const flat = await this.resolveFlat(societyId, tenantId, input);
-    const passwordHash = await bcrypt.hash(input.password, 12);
+    const passwordHash = await bcrypt.hash(input.password, this.bcryptRounds);
 
     const member = await this.prisma.$transaction(async (tx) => {
       const created = await tx.member.create({
@@ -207,14 +214,14 @@ export class MembersService {
       });
     });
 
-    await this.audit.log({
+    void this.audit.log({
       societyId,
       actorId: actor.id,
       action: 'MEMBER_CREATED',
       entityType: 'Member',
       entityId: member.id,
       details: `${member.ownerName} ${input.wing}-${input.flatNo} (app login provisioned)`,
-    });
+    }).catch(() => undefined);
     return serializeMember(member);
   }
 
@@ -225,7 +232,8 @@ export class MembersService {
     actor: AuthUser,
   ) {
     const existing = await this.getById(societyId, id, actor);
-    const tenantId = await this.prisma.getSocietyTenantId(societyId);
+    const tenantId =
+      actor.tenantId ?? (await this.prisma.getSocietyTenantId(societyId));
 
     const data: Prisma.MemberUpdateInput = {};
     if (input.ownerName !== undefined) data.ownerName = input.ownerName;
@@ -286,7 +294,7 @@ export class MembersService {
       await this.prisma.$transaction(async (tx) => {
         const linked = await tx.user.findFirst({ where: { memberId: id } });
         if (input.password) {
-          const passwordHash = await bcrypt.hash(input.password, 12);
+          const passwordHash = await bcrypt.hash(input.password, this.bcryptRounds);
           if (linked) {
             await tx.user.update({
               where: { id: linked.id },

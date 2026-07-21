@@ -16,6 +16,7 @@ export function useLiveRefresh(
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     const run = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       if (inFlight) return;
       inFlight = true;
       void Promise.resolve(callback()).finally(() => {

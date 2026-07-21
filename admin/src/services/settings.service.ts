@@ -118,12 +118,12 @@ export const settingsService = {
     return cache.get(societyId) ?? defaultSettings(societyId);
   },
 
-  async fetch(societyId: string): Promise<SocietySettings> {
+  async fetch(societyId: string, opts?: { silent?: boolean }): Promise<SocietySettings> {
     try {
       const raw = await settingsApi.get(societyId);
       const mapped = mapApiSettings(raw, societyId);
       cache.set(societyId, mapped);
-      notifyDataUpdated();
+      if (!opts?.silent) notifyDataUpdated();
       return mapped;
     } catch (e) {
       throw new Error(apiErrorMessage(e));
