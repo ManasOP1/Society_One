@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AuthLoadingScreen } from "@/components/layout/auth-guard";
+import { Loader2 } from "lucide-react";
+import { AuthLoadingScreen } from "@/components/shared/auth-loading-screen";
 import { useAuth } from "@/context/auth-context";
 import { SUPER_ADMIN } from "@/services/society.service";
 import { Button } from "@/components/ui/button";
@@ -37,8 +38,21 @@ export default function SuperAdminLoginPage() {
     router.replace("/super-admin");
   };
 
-  if (!sessionKnown || isSuperAdmin || submitting) {
-    return <AuthLoadingScreen />;
+  if (!sessionKnown) {
+    return <AuthLoadingScreen message="Checking session…" />;
+  }
+
+  if (submitting) {
+    return (
+      <AuthLoadingScreen
+        message="Signing you in…"
+        submessage="Verifying super admin credentials"
+      />
+    );
+  }
+
+  if (isSuperAdmin) {
+    return <AuthLoadingScreen message="Opening console…" />;
   }
 
   return (
@@ -84,7 +98,14 @@ export default function SuperAdminLoginPage() {
               </p>
             )}
             <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? "Signing in…" : "Sign in"}
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Signing in…
+                </>
+              ) : (
+                "Sign in"
+              )}
             </Button>
           </div>
         </form>

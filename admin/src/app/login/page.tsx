@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Lock, Mail, Shield } from "lucide-react";
 import { LayersIcon } from "@animateicons/react/lucide";
-import { AuthLoadingScreen } from "@/components/layout/auth-guard";
+import { AuthLoadingScreen } from "@/components/shared/auth-loading-screen";
 import { useAuth } from "@/context/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,8 +41,31 @@ export default function LoginPage() {
     router.replace("/");
   };
 
-  if (!sessionKnown || submitting || isAuthenticated) {
-    return <AuthLoadingScreen />;
+  if (!sessionKnown) {
+    return (
+      <AuthLoadingScreen
+        message="Checking session…"
+        submessage="Hang tight while we verify your access"
+      />
+    );
+  }
+
+  if (submitting) {
+    return (
+      <AuthLoadingScreen
+        message="Signing you in…"
+        submessage="Verifying credentials with the server"
+      />
+    );
+  }
+
+  if (isAuthenticated) {
+    return (
+      <AuthLoadingScreen
+        message="Opening dashboard…"
+        submessage="Loading your society workspace"
+      />
+    );
   }
 
   return (
@@ -120,7 +144,14 @@ export default function LoginPage() {
             )}
 
             <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? "Signing in…" : "Sign in to society"}
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Signing in…
+                </>
+              ) : (
+                "Sign in to society"
+              )}
             </Button>
 
             <Link

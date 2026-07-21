@@ -2,15 +2,10 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { AuthLoadingScreen } from "@/components/shared/auth-loading-screen";
 import { useAuth } from "@/context/auth-context";
 
-export function AuthLoadingScreen() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-[#F5F7FB] dark:bg-slate-950">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#4F46E5] border-t-transparent" />
-    </div>
-  );
-}
+export { AuthLoadingScreen };
 
 /** Guards society-admin dashboard routes */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -28,10 +23,24 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, isLoading, sessionReady, isSuperAdmin, router]);
 
-  if (!sessionReady || isLoading) return <AuthLoadingScreen />;
-  if (isSuperAdmin) return <AuthLoadingScreen />;
-  if (!isAuthenticated) return <AuthLoadingScreen />;
-  if (!society) return <AuthLoadingScreen />;
+  if (!sessionReady || isLoading) {
+    return (
+      <AuthLoadingScreen
+        message="Restoring session…"
+        submessage="Please wait a moment"
+      />
+    );
+  }
+  if (isSuperAdmin) return <AuthLoadingScreen message="Redirecting…" />;
+  if (!isAuthenticated) return <AuthLoadingScreen message="Redirecting to login…" />;
+  if (!society) {
+    return (
+      <AuthLoadingScreen
+        message="Loading your society…"
+        submessage="Fetching members and settings"
+      />
+    );
+  }
 
   return <>{children}</>;
 }
@@ -47,8 +56,10 @@ export function SuperAdminGuard({ children }: { children: React.ReactNode }) {
     }
   }, [isLoading, sessionReady, isSuperAdmin, router]);
 
-  if (!sessionReady || isLoading) return <AuthLoadingScreen />;
-  if (!isSuperAdmin) return <AuthLoadingScreen />;
+  if (!sessionReady || isLoading) {
+    return <AuthLoadingScreen message="Loading console…" />;
+  }
+  if (!isSuperAdmin) return <AuthLoadingScreen message="Redirecting…" />;
 
   return <>{children}</>;
 }
