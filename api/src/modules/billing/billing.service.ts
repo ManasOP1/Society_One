@@ -25,9 +25,13 @@ export type InvoiceLineItem = {
   isDeduction?: boolean;
 };
 
-const INVOICE_INCLUDE = {
+const INVOICE_LIST_INCLUDE = {
   member: { select: { id: true, ownerName: true, phone: true, email: true } },
   flat: { include: { wing: true } },
+} satisfies Prisma.InvoiceInclude;
+
+const INVOICE_INCLUDE = {
+  ...INVOICE_LIST_INCLUDE,
   lines: { orderBy: { lineNo: 'asc' as const } },
 } satisfies Prisma.InvoiceInclude;
 
@@ -125,7 +129,7 @@ export class BillingService {
           orderBy,
           skip,
           take,
-          include: INVOICE_INCLUDE,
+          include: INVOICE_LIST_INCLUDE,
         }),
       ]);
       const result: PaginatedResult<ReturnType<typeof serializeInvoice>> = {
@@ -138,7 +142,7 @@ export class BillingService {
     const rows = await this.prisma.invoice.findMany({
       where,
       orderBy,
-      include: INVOICE_INCLUDE,
+      include: INVOICE_LIST_INCLUDE,
     });
     return rows.map(serializeInvoice);
   }

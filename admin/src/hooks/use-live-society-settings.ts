@@ -1,15 +1,17 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLiveRefresh } from "@/hooks/use-live-refresh";
 import { settingsService } from "@/services/settings.service";
 import type { SocietySettings } from "@/types";
 
-/** Loads society settings from the live API and refreshes on focus / storage events. */
+/** Loads society settings — cache first, background refresh on interval/focus. */
 export function useLiveSocietySettings(
   societyId: string | undefined
 ): SocietySettings | null {
-  const [settings, setSettings] = useState<SocietySettings | null>(null);
+  const [settings, setSettings] = useState<SocietySettings | null>(() =>
+    societyId ? settingsService.get(societyId) : null
+  );
 
   const reload = useCallback(async () => {
     if (!societyId) {
@@ -17,14 +19,26 @@ export function useLiveSocietySettings(
       return;
     }
     try {
-      const next = await settingsService.fetch(societyId);
+      const next = await settingsService.fetch(societyId, { silent: true });
       setSettings(next);
     } catch {
-      /* keep last known value */
+      setSettings(settingsService.get(societyId));
     }
   }, [societyId]);
 
-  useLiveRefresh(() => void reload(), !!societyId);
+  useEffect(() => {
+    if (!societyId) {
+      setSettings(null);
+      return;
+    }
+    setSettings(settingsService.get(societyId));
+    void reload();
+  }, [societyId, reload]);
+
+  useLiveRefresh(() => void reload(), !!societyId, {
+    scope: "settings",
+    immediate: false,
+  });
 
   return settings;
 }

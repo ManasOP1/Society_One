@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export default function SuperAdminLoginPage() {
-  const { loginSuperAdmin, isSuperAdmin, isLoading } = useAuth();
+  const { loginSuperAdmin, isSuperAdmin, isLoading, sessionReady } = useAuth();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [email, setEmail] = useState("");
@@ -22,9 +22,9 @@ export default function SuperAdminLoginPage() {
   }, []);
 
   useEffect(() => {
-    if (!mounted || isLoading) return;
+    if (!mounted || !sessionReady || isLoading) return;
     if (isSuperAdmin) router.replace("/super-admin");
-  }, [mounted, isLoading, isSuperAdmin, router]);
+  }, [mounted, isLoading, sessionReady, isSuperAdmin, router]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

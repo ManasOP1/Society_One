@@ -9,8 +9,6 @@ import {
   societyService,
   type CreateSocietyInput,
 } from "@/services/society.service";
-import { invoiceService } from "@/services/invoice.service";
-import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -164,7 +162,6 @@ function SuperAdminDashboard() {
               </thead>
               <tbody>
                 {filtered.map((s) => {
-                  const inv = invoiceService.stats(s.id);
                   const inactive = s.status === "inactive";
                   return (
                     <tr
@@ -180,9 +177,7 @@ function SuperAdminDashboard() {
                         <p className="text-xs text-slate-500">{s.adminEmail}</p>
                       </td>
                       <td className="px-4 py-3 text-slate-700">{s.totalFlats}</td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {formatCurrency(inv.collected)}
-                      </td>
+                      <td className="px-4 py-3 text-slate-500">—</td>
                       <td className="px-4 py-3">
                         <Badge variant={inactive ? "secondary" : "success"}>
                           {inactive ? "Inactive" : "Active"}

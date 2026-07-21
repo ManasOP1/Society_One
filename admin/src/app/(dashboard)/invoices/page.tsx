@@ -75,10 +75,11 @@ export default function InvoicesPage() {
       setSettings(null);
       return;
     }
-    void settingsService.fetch(society.id).then(setSettings).catch(() => {
+    setSettings(settingsService.get(society.id));
+    void settingsService.fetch(society.id, { silent: true }).then(setSettings).catch(() => {
       setSettings(settingsService.get(society.id));
     });
-  }, [society, selected]);
+  }, [society]);
 
   const filtered = useMemo(() => {
     return invoices.filter((inv) => {

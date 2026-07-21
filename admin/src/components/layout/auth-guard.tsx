@@ -14,11 +14,12 @@ function LoadingScreen() {
 
 /** Guards society-admin dashboard routes */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, isSuperAdmin, society } = useAuth();
+  const { isAuthenticated, isLoading, sessionReady, isSuperAdmin, society } = useAuth();
   const router = useRouter();
+  const hasCachedSession = isAuthenticated && !!society;
 
   useEffect(() => {
-    if (isLoading) return;
+    if (!sessionReady || isLoading) return;
     if (isSuperAdmin) {
       router.replace("/super-admin");
       return;
@@ -26,27 +27,32 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     if (!isAuthenticated || !society) {
       router.replace("/login");
     }
-  }, [isAuthenticated, isLoading, isSuperAdmin, society, router]);
+  }, [isAuthenticated, isLoading, sessionReady, isSuperAdmin, society, router]);
 
-  if (isLoading) return <LoadingScreen />;
-  if (isSuperAdmin || !isAuthenticated || !society) return null;
+  if (!sessionReady && !hasCachedSession) return <LoadingScreen />;
+  if (sessionReady && isLoading && !hasCachedSession) return <LoadingScreen />;
+  if (isSuperAdmin) return <LoadingScreen />;
+  if (!isAuthenticated || !society) {
+    if (isLoading || !sessionReady) return <LoadingScreen />;
+    return <LoadingScreen />;
+  }
 
   return <>{children}</>;
 }
 
 /** Guards Super Admin platform console */
 export function SuperAdminGuard({ children }: { children: React.ReactNode }) {
-  const { isLoading, isSuperAdmin } = useAuth();
+  const { isLoading, sessionReady, isSuperAdmin } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && !isSuperAdmin) {
+    if (sessionReady && !isLoading && !isSuperAdmin) {
       router.replace("/super-admin/login");
     }
-  }, [isLoading, isSuperAdmin, router]);
+  }, [isLoading, sessionReady, isSuperAdmin, router]);
 
-  if (isLoading) return <LoadingScreen />;
-  if (!isSuperAdmin) return null;
+  if (!sessionReady || isLoading) return <LoadingScreen />;
+  if (!isSuperAdmin) return <LoadingScreen />;
 
   return <>{children}</>;
 }

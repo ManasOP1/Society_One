@@ -108,12 +108,10 @@ export function clearApiSession(): void {
   removeStorage(TOKEN_KEYS.user);
 }
 
-/** Notifies live-data hooks/services (see createLiveCache) to re-read their caches. */
-export function notifyDataUpdated(): void {
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event("societyone-storage"));
-  }
-}
+/** Notifies live-data hooks/services to re-read their caches. Prefer a specific scope. */
+export { notifyDataUpdated } from "@/lib/live-data-events";
+export type { LiveDataScope } from "@/lib/live-data-events";
+import { notifyDataUpdated } from "@/lib/live-data-events";
 
 export class ApiError extends Error {
   status: number;

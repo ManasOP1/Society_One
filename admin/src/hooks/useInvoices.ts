@@ -3,11 +3,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLiveRefresh } from "@/hooks/use-live-refresh";
 import { invoiceService } from "@/services/invoice.service";
+import { subscribeLiveData } from "@/lib/live-data-events";
 import type { Invoice, InvoiceStatus } from "@/types";
 
 export function useInvoices(societyId: string | undefined) {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [invoices, setInvoices] = useState<Invoice[]>(() =>
+    societyId ? invoiceService.list(societyId) : []
+  );
+  const [loading, setLoading] = useState(false);
+
+  const syncFromCache = useCallback(() => {
+    if (!societyId) {
+      setInvoices([]);
+      return;
+    }
+    setInvoices(invoiceService.list(societyId));
+  }, [societyId]);
 
   const refresh = useCallback(() => {
     if (!societyId) {
@@ -15,26 +26,32 @@ export function useInvoices(societyId: string | undefined) {
       setLoading(false);
       return;
     }
+    setLoading((prev) => prev || invoices.length === 0);
     void invoiceService.reload(societyId).finally(() => {
-      setInvoices(invoiceService.list(societyId));
+      syncFromCache();
       setLoading(false);
     });
-  }, [societyId]);
+  }, [societyId, syncFromCache, invoices.length]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    syncFromCache();
+  }, [syncFromCache]);
 
-  useLiveRefresh(refresh, !!societyId);
+  useEffect(() => {
+    if (!societyId) return;
+    return subscribeLiveData("invoices", syncFromCache);
+  }, [societyId, syncFromCache]);
+
+  useLiveRefresh(refresh, !!societyId, { scope: "invoices", immediate: false });
 
   const generateMonthly = useCallback(
     async (month: string, _actor: string, _memberIds?: string[]) => {
       if (!societyId) return [];
       const created = await invoiceService.generateMonthly(societyId, month);
-      refresh();
+      syncFromCache();
       return created;
     },
-    [societyId, refresh]
+    [societyId, syncFromCache]
   );
 
   const setStatus = useCallback(
@@ -45,19 +62,19 @@ export function useInvoices(societyId: string | undefined) {
         actor,
         paidAmount
       );
-      refresh();
+      syncFromCache();
       return updated;
     },
-    [refresh]
+    [syncFromCache]
   );
 
   const duplicate = useCallback(
     (invoiceNo: string, actor: string) => {
       const copy = invoiceService.duplicate(invoiceNo, actor);
-      refresh();
+      syncFromCache();
       return copy;
     },
-    [refresh]
+    [syncFromCache]
   );
 
   const remove = useCallback(
@@ -65,15 +82,15 @@ export function useInvoices(societyId: string | undefined) {
       if (!societyId) return false;
       try {
         await invoiceService.remove(invoiceNo, societyId, actor);
-        refresh();
+        syncFromCache();
         return true;
       } catch (e) {
         console.error("Failed to delete invoice:", e);
-        refresh();
+        syncFromCache();
         return false;
       }
     },
-    [refresh, societyId]
+    [societyId, syncFromCache]
   );
 
   const stats = societyId ? invoiceService.stats(societyId) : null;

@@ -90,7 +90,7 @@ export const eventService = {
         details: event.title,
         actor,
       });
-      notifyDataUpdated();
+      notifyDataUpdated("events");
       return event;
     } catch (e) {
       throw new Error(apiErrorMessage(e));
@@ -121,7 +121,7 @@ export const eventService = {
         details: event.title,
         actor,
       });
-      notifyDataUpdated();
+      notifyDataUpdated("events");
       return event;
     } catch (e) {
       throw new Error(apiErrorMessage(e));
@@ -139,7 +139,7 @@ export const eventService = {
         details: id,
         actor,
       });
-      notifyDataUpdated();
+      notifyDataUpdated("events");
       return true;
     } catch (e) {
       throw new Error(apiErrorMessage(e));

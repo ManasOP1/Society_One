@@ -1,6 +1,5 @@
 import { Feather } from '@expo/vector-icons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useQueryClient } from '@tanstack/react-query';
 import { Tabs } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,7 +19,6 @@ const TAB_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
 function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
-  const queryClient = useQueryClient();
 
   return (
     <View pointerEvents="box-none" style={[styles.wrap, { bottom: insets.bottom + Spacing.onehalf }]}>
@@ -35,9 +33,6 @@ function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
             });
             if (!active && !event.defaultPrevented) {
               navigation.navigate(route.name);
-              void queryClient.invalidateQueries({
-                predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'session',
-              });
             }
           };
           return (

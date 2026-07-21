@@ -59,7 +59,7 @@ export const noticeService = {
         details: notice.title,
         actor,
       });
-      notifyDataUpdated();
+      notifyDataUpdated("notices");
       return notice;
     } catch (e) {
       throw new Error(apiErrorMessage(e));
@@ -77,7 +77,7 @@ export const noticeService = {
         details: id,
         actor,
       });
-      notifyDataUpdated();
+      notifyDataUpdated("notices");
       return true;
     } catch (e) {
       throw new Error(apiErrorMessage(e));
@@ -96,7 +96,7 @@ export const noticeService = {
         details: notice.title,
         actor,
       });
-      notifyDataUpdated();
+      notifyDataUpdated("notices");
       return notice;
     } catch (e) {
       throw new Error(apiErrorMessage(e));

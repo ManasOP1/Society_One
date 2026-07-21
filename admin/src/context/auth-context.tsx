@@ -22,8 +22,10 @@ import {
   type ApiUser,
 } from "@/lib/api-client";
 import { LIVE_SYNC_DEBOUNCE_MS, LIVE_SYNC_MS } from "@/constants/live-sync";
+import { subscribeLiveData } from "@/lib/live-data-events";
 import { societyService, SUPER_ADMIN } from "@/services/society.service";
 import { settingsService } from "@/services/settings.service";
+import { cacheKey, readAdminCache, writeAdminCache, clearAdminCachePrefix, clearSocietyAdminCache } from "@/lib/admin-cache";
 
 type AuthRole = "society" | "super_admin";
 
@@ -33,6 +35,8 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isSuperAdmin: boolean;
   isLoading: boolean;
+  /** False until persisted session + society bootstrap finishes (prevents login flash on reload). */
+  sessionReady: boolean;
   societies: Society[];
   members: Member[];
   payments: PaymentRecord[];
@@ -110,12 +114,39 @@ function toApiMemberInput(input: Omit<Member, "id" | "societyId" | "photo" | "ha
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<ApiUser | null>(null);
+  const [user, setUser] = useState<ApiUser | null>(() => {
+    if (typeof window === "undefined" || !hasAccessToken()) return null;
+    return getStoredUser();
+  });
   const [isLoading, setIsLoading] = useState(true);
-  const [members, setMembersState] = useState<Member[]>([]);
+  const [sessionReady, setSessionReady] = useState(() => {
+    if (typeof window === "undefined") return false;
+    if (!hasAccessToken()) return true;
+    const stored = getStoredUser();
+    if (!stored) return false;
+    if (stored.role === "SUPER_ADMIN") {
+      return (readAdminCache<Society[]>(cacheKey("societies"))?.length ?? 0) > 0;
+    }
+    if (!stored.societyId) return false;
+    return !!readAdminCache<Society>(cacheKey("society", stored.societyId));
+  });
+  const [members, setMembersState] = useState<Member[]>(() => {
+    if (typeof window === "undefined") return [];
+    const stored = getStoredUser();
+    if (!stored?.societyId) return [];
+    return readAdminCache<Member[]>(cacheKey("members", stored.societyId)) ?? [];
+  });
   const [payments] = useState<PaymentRecord[]>([]);
-  const [societies, setSocieties] = useState<Society[]>([]);
-  const [society, setSociety] = useState<Society | null>(null);
+  const [societies, setSocieties] = useState<Society[]>(() => {
+    if (typeof window === "undefined") return [];
+    return readAdminCache<Society[]>(cacheKey("societies")) ?? [];
+  });
+  const [society, setSociety] = useState<Society | null>(() => {
+    if (typeof window === "undefined") return null;
+    const stored = getStoredUser();
+    if (!stored?.societyId) return null;
+    return readAdminCache<Society>(cacheKey("society", stored.societyId));
+  });
   const membersLoadedFor = useRef<string | null>(null);
   const membersLoadingFor = useRef<string | null>(null);
 
@@ -129,7 +160,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     membersLoadingFor.current = societyId;
     try {
       const rows = await membersApi.list(societyId);
-      setMembersState(rows.map((m) => mapApiMember(m, societyId)));
+      const mapped = rows.map((m) => mapApiMember(m, societyId));
+      setMembersState(mapped);
+      writeAdminCache(cacheKey("members", societyId), mapped);
     } catch (e) {
       const message = apiErrorMessage(e);
       if (!message.includes("Too Many Requests")) {
@@ -147,11 +180,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const s = await societyService.me();
-    setSociety(
-      s
-        ? { ...s, id: u.societyId, adminName: u.name, adminEmail: u.email }
-        : null
-    );
+    const next = s
+      ? { ...s, id: u.societyId, adminName: u.name, adminEmail: u.email }
+      : null;
+    setSociety(next);
+    if (next) writeAdminCache(cacheKey("society", u.societyId!), next);
   }, []);
 
   const loadSocietyData = useCallback(
@@ -161,7 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       membersLoadedFor.current = u.societyId;
-      void Promise.all([
+      await Promise.all([
         loadSociety(u),
         loadMembers(u.societyId),
         settingsService.fetch(u.societyId, { silent: true }).catch(() => undefined),
@@ -175,6 +208,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const list = await societyService.list();
         setSocieties(list);
+        writeAdminCache(cacheKey("societies"), list);
       } catch (e) {
         console.error("Failed to load societies from API:", apiErrorMessage(e));
       }
@@ -186,40 +220,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     void (async () => {
       if (!hasAccessToken()) {
         setIsLoading(false);
+        setSessionReady(true);
         return;
       }
       try {
         const me = await authApi.me();
         setUser(me as ApiUser);
         if (me.role === "SUPER_ADMIN") {
-          await societyService.list().then(setSocieties).catch((e) => {
-            console.error("Failed to load societies from API:", apiErrorMessage(e));
-          });
+          const list = await societyService.list().catch(() => [] as Society[]);
+          setSocieties(list);
+          writeAdminCache(cacheKey("societies"), list);
         } else if (me.societyId) {
           membersLoadedFor.current = me.societyId;
-          void loadSocietyData(me as ApiUser);
+          await loadSocietyData(me as ApiUser);
         }
       } catch {
         clearApiSession();
         setUser(null);
         setSociety(null);
+        setMembersState([]);
       } finally {
         setIsLoading(false);
+        setSessionReady(true);
       }
     })();
   }, [loadSocietyData]);
 
-  // After interactive login, load society directory or members without a full-page reload.
+  // After interactive login, load society data without duplicate super-admin fetch.
   useEffect(() => {
     if (!user || isLoading) return;
     if (user.role === "SUPER_ADMIN") {
-      refreshSocieties();
+      if (societies.length === 0) refreshSocieties();
       return;
     }
     if (user.societyId && membersLoadedFor.current !== user.societyId) {
       void loadSocietyData(user);
     }
-  }, [user, isLoading, loadSocietyData, refreshSocieties]);
+  }, [user, isLoading, loadSocietyData, refreshSocieties, societies.length]);
 
   // Poll member list while the admin console is open (settings/invoices use their own hooks).
   useEffect(() => {
@@ -238,13 +275,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const id = window.setInterval(tick, LIVE_SYNC_MS);
-    window.addEventListener("societyone-storage", scheduleDebounced);
+    const unsub = subscribeLiveData("members", scheduleDebounced);
     window.addEventListener("focus", scheduleDebounced);
 
     return () => {
       window.clearInterval(id);
       if (debounceTimer) clearTimeout(debounceTimer);
-      window.removeEventListener("societyone-storage", scheduleDebounced);
+      unsub();
       window.removeEventListener("focus", scheduleDebounced);
     };
   }, [user, loadMembers]);
@@ -262,7 +299,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
         setUser(res.user);
         if (res.user.societyId) {
-          void loadSocietyData(res.user);
+          await loadSocietyData(res.user);
         }
         return null;
       } catch (e) {
@@ -284,9 +321,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           res.user
         );
         setUser(res.user);
-        void societyService.list().then(setSocieties).catch((e) => {
-          console.error("Failed to load societies from API:", apiErrorMessage(e));
-        });
+        const list = await societyService.list().catch(() => [] as Society[]);
+        setSocieties(list);
+        writeAdminCache(cacheKey("societies"), list);
         return null;
       } catch (e) {
         return apiErrorMessage(e);
@@ -302,13 +339,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     void authApi.logout();
+    const societyId = society?.id ?? user?.societyId ?? undefined;
     clearApiSession();
     setUser(null);
     setSociety(null);
     setSocieties([]);
     setMembersState([]);
     membersLoadedFor.current = null;
-  }, []);
+    clearAdminCachePrefix(cacheKey("societies"));
+    if (societyId) clearSocietyAdminCache(societyId);
+  }, [society?.id, user?.societyId]);
 
   const societyMembers = useMemo(
     () => (society ? members.filter((m) => m.societyId === society.id) : []),
@@ -330,10 +370,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           toApiMemberInput(member),
           society.id
         );
-        setMembersState((prev) => [
-          ...prev.filter((m) => m.email !== member.email),
-          mapApiMember(created, society.id),
-        ]);
+        setMembersState((prev) => {
+          const next = [
+            ...prev.filter((m) => m.email !== member.email),
+            mapApiMember(created, society.id),
+          ];
+          writeAdminCache(cacheKey("members", society.id), next);
+          return next;
+        });
         return null;
       } catch (e) {
         return apiErrorMessage(e);
@@ -354,11 +398,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           toApiMemberInput(member),
           society.id
         );
-        setMembersState((prev) =>
-          prev.map((m) =>
+        setMembersState((prev) => {
+          const next = prev.map((m) =>
             m.id === id ? mapApiMember(updated, society.id) : m
-          )
-        );
+          );
+          writeAdminCache(cacheKey("members", society.id), next);
+          return next;
+        });
         return null;
       } catch (e) {
         return apiErrorMessage(e);
@@ -372,8 +418,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!society) return "No society selected";
       try {
         await membersApi.remove(id, society.id);
-        setMembersState((prev) => prev.filter((m) => m.id !== id));
-        notifyDataUpdated();
+        setMembersState((prev) => {
+          const next = prev.filter((m) => m.id !== id);
+          writeAdminCache(cacheKey("members", society.id), next);
+          return next;
+        });
+        notifyDataUpdated("members");
         return null;
       } catch (e) {
         return apiErrorMessage(e);
@@ -396,7 +446,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         rows.map((row) => membersApi.create(toApiMemberInput(row), society.id))
       )
         .then(() => {
-          notifyDataUpdated();
+          notifyDataUpdated("members");
           return loadMembers(society.id);
         })
         .catch((e) => {
@@ -410,29 +460,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const setMembers = useCallback((next: Member[]) => {
     setMembersState(next);
+    const societyId = next[0]?.societyId;
+    if (societyId) writeAdminCache(cacheKey("members", societyId), next);
   }, []);
 
-  const value: AuthContextValue = {
-    role,
-    society,
-    isAuthenticated,
-    isSuperAdmin,
-    isLoading,
-    societies,
-    members: societyMembers,
-    payments: societyPayments,
-    superAdminName: user?.role === "SUPER_ADMIN" ? user.name : SUPER_ADMIN.name,
-    login,
-    loginSuperAdmin,
-    logout,
-    refreshSocieties,
-    refreshSociety,
-    addMember,
-    updateMember,
-    deleteMember,
-    importMembers,
-    setMembers,
-  };
+  const value: AuthContextValue = useMemo(
+    () => ({
+      role,
+      society,
+      isAuthenticated,
+      isSuperAdmin,
+      isLoading,
+      sessionReady,
+      societies,
+      members: societyMembers,
+      payments: societyPayments,
+      superAdminName: user?.role === "SUPER_ADMIN" ? user.name : SUPER_ADMIN.name,
+      login,
+      loginSuperAdmin,
+      logout,
+      refreshSocieties,
+      refreshSociety,
+      addMember,
+      updateMember,
+      deleteMember,
+      importMembers,
+      setMembers,
+    }),
+    [
+      role,
+      society,
+      isAuthenticated,
+      isSuperAdmin,
+      isLoading,
+      sessionReady,
+      societies,
+      societyMembers,
+      societyPayments,
+      user,
+      login,
+      loginSuperAdmin,
+      logout,
+      refreshSocieties,
+      refreshSociety,
+      addMember,
+      updateMember,
+      deleteMember,
+      importMembers,
+      setMembers,
+    ]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

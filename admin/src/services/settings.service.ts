@@ -5,6 +5,7 @@
 import { settingsApi, apiErrorMessage, notifyDataUpdated } from "@/lib/api-client";
 import type { SocietySettings } from "@/types";
 import { auditService } from "@/services/audit.service";
+import { cacheKey, readAdminCache, writeAdminCache } from "@/lib/admin-cache";
 
 const cache = new Map<string, SocietySettings>();
 
@@ -115,6 +116,10 @@ export type SettingsUpdateResult = SocietySettings & { invoicesSynced?: number }
 export const settingsService = {
   /** Last fetched settings, or safe defaults for sync callers (invoices, receipts). */
   get(societyId: string): SocietySettings {
+    if (!cache.has(societyId)) {
+      const persisted = readAdminCache<SocietySettings>(cacheKey("settings", societyId));
+      if (persisted) cache.set(societyId, persisted);
+    }
     return cache.get(societyId) ?? defaultSettings(societyId);
   },
 
@@ -123,7 +128,8 @@ export const settingsService = {
       const raw = await settingsApi.get(societyId);
       const mapped = mapApiSettings(raw, societyId);
       cache.set(societyId, mapped);
-      if (!opts?.silent) notifyDataUpdated();
+      writeAdminCache(cacheKey("settings", societyId), mapped);
+      if (!opts?.silent) notifyDataUpdated("settings");
       return mapped;
     } catch (e) {
       throw new Error(apiErrorMessage(e));
@@ -147,7 +153,8 @@ export const settingsService = {
       });
       const mapped = mapApiSettings(raw, societyId);
       cache.set(societyId, mapped);
-      notifyDataUpdated();
+      writeAdminCache(cacheKey("settings", societyId), mapped);
+      notifyDataUpdated("settings");
       return {
         ...mapped,
         invoicesSynced: Number(raw?.invoicesSynced) || 0,

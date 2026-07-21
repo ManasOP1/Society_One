@@ -2,12 +2,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
-import { LIVE_SYNC_MS } from '@/constants/live-sync';
+import { LIVE_SYNC_DEBOUNCE_MS } from '@/constants/live-sync';
 import { useAuth } from '@/context/auth';
 
 /**
- * Keeps the resident session and TanStack Query cache in sync with the API
- * while the app is open — admin changes show up within a few seconds.
+ * Refreshes the resident profile when the app returns to the foreground.
+ * TanStack Query handles periodic data polling — this avoids duplicate intervals.
  */
 export function useLiveSessionSync() {
   const queryClient = useQueryClient();
@@ -16,36 +16,27 @@ export function useLiveSessionSync() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    let timer: ReturnType<typeof setInterval> | null = null;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const sync = async () => {
-      await refreshSession();
-      await queryClient.refetchQueries({
+    const sync = () => {
+      void refreshSession();
+      void queryClient.invalidateQueries({
         predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'session',
+        refetchType: 'active',
       });
     };
 
-    const start = () => {
-      void sync();
-      if (!timer) timer = setInterval(() => void sync(), LIVE_SYNC_MS);
-    };
-
-    const stop = () => {
-      if (timer) {
-        clearInterval(timer);
-        timer = null;
-      }
+    const schedule = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(sync, LIVE_SYNC_DEBOUNCE_MS);
     };
 
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') start();
-      else stop();
+      if (state === 'active') schedule();
     });
 
-    if (AppState.currentState === 'active') start();
-
     return () => {
-      stop();
+      if (debounceTimer) clearTimeout(debounceTimer);
       sub.remove();
     };
   }, [isAuthenticated, refreshSession, queryClient]);

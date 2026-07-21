@@ -13,15 +13,32 @@
 
 import { invoicesApi, notifyDataUpdated, apiErrorMessage } from "@/lib/api-client";
 import type { Invoice, InvoiceLineItem, InvoiceStatus } from "@/types";
+import { cacheKey, readAdminCache, writeAdminCache } from "@/lib/admin-cache";
 
 function uid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-// In-memory only — cleared on reload, never written to localStorage.
+// In-memory + localStorage — survives reload, refreshed from API in background.
 let cache: Invoice[] = [];
 const loadedFor = new Set<string>();
 const loadingFor = new Set<string>();
+
+function hydrateInvoices(societyId: string) {
+  if (loadedFor.has(societyId)) return;
+  const persisted = readAdminCache<Invoice[]>(cacheKey("invoices", societyId));
+  if (persisted?.length) {
+    cache = [...cache.filter((i) => i.societyId !== societyId), ...persisted];
+    loadedFor.add(societyId);
+  }
+}
+
+function persistInvoices(societyId: string) {
+  writeAdminCache(
+    cacheKey("invoices", societyId),
+    cache.filter((i) => i.societyId === societyId)
+  );
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapApiInvoice(raw: any, societyId: string): Invoice {
@@ -96,6 +113,7 @@ function upsert(invoice: Invoice) {
   const idx = cache.findIndex((i) => i.invoiceNo === invoice.invoiceNo);
   if (idx >= 0) cache[idx] = invoice;
   else cache = [invoice, ...cache];
+  persistInvoices(invoice.societyId);
 }
 
 async function refreshList(societyId: string): Promise<void> {
@@ -106,7 +124,8 @@ async function refreshList(societyId: string): Promise<void> {
     const mapped = rows.map((r) => mapApiInvoice(r, societyId));
     cache = [...cache.filter((i) => i.societyId !== societyId), ...mapped];
     loadedFor.add(societyId);
-    notifyDataUpdated();
+    persistInvoices(societyId);
+    notifyDataUpdated("invoices");
   } catch (e) {
     console.error("Failed to load invoices from API:", apiErrorMessage(e));
   } finally {
@@ -116,6 +135,7 @@ async function refreshList(societyId: string): Promise<void> {
 
 export const invoiceService = {
   list(societyId: string): Invoice[] {
+    hydrateInvoices(societyId);
     if (!loadedFor.has(societyId)) void refreshList(societyId);
     return cache
       .filter((i) => i.societyId === societyId)
@@ -141,7 +161,7 @@ export const invoiceService = {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const created = (res.invoices as any[]).map((raw) => mapApiInvoice(raw, societyId));
       created.forEach(upsert);
-      notifyDataUpdated();
+      notifyDataUpdated("invoices");
       return created;
     } catch (e) {
       console.error("Failed to generate invoices:", apiErrorMessage(e));
@@ -165,7 +185,7 @@ export const invoiceService = {
       cancelledAt: null,
     };
     upsert(copy);
-    notifyDataUpdated();
+    notifyDataUpdated("invoices");
     return copy;
   },
 
@@ -191,7 +211,7 @@ export const invoiceService = {
       next.outstanding = next.totalAmount;
     }
     upsert(next);
-    notifyDataUpdated();
+    notifyDataUpdated("invoices");
     return next;
   },
 
@@ -204,7 +224,7 @@ export const invoiceService = {
     const status: InvoiceStatus = outstanding <= 0 ? "Paid" : "Partial";
     const next = { ...inv, paidAmount, outstanding, status, updatedAt: new Date().toISOString() };
     upsert(next);
-    notifyDataUpdated();
+    notifyDataUpdated("invoices");
     return next;
   },
 
@@ -213,7 +233,8 @@ export const invoiceService = {
     try {
       await invoicesApi.remove(invoiceNo, societyId);
       cache = cache.filter((i) => i.invoiceNo !== invoiceNo);
-      notifyDataUpdated();
+      persistInvoices(societyId);
+      notifyDataUpdated("invoices");
       return true;
     } catch (e) {
       throw new Error(apiErrorMessage(e));
@@ -228,7 +249,8 @@ export const invoiceService = {
     cache = cache.map((inv) =>
       inv.societyId === societyId ? { ...inv, ...branding, updatedAt: new Date().toISOString() } : inv
     );
-    notifyDataUpdated();
+    persistInvoices(societyId);
+    notifyDataUpdated("invoices");
   },
 
   stats(societyId: string, month?: string) {

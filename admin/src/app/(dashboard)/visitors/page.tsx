@@ -28,7 +28,7 @@ export default function VisitorsPage() {
     if (society) setVisitors(visitorService.list(society.id));
   }, [society?.id]);
 
-  useLiveRefresh(refresh, !!society?.id);
+  useLiveRefresh(refresh, !!society?.id, { scope: "visitors", immediate: false });
 
   if (!society) return null;
 

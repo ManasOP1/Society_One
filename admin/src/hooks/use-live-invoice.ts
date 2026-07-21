@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { LIVE_SYNC_DEBOUNCE_MS } from "@/constants/live-sync";
 import { invoiceService } from "@/services/invoice.service";
+import { subscribeLiveData } from "@/lib/live-data-events";
 import type { Invoice } from "@/types";
 
-/** Keeps a single invoice in sync with localStorage (public link / receipt pages). */
+/** Keeps a single invoice in sync with the invoice cache (public link / receipt pages). */
 export function useLiveInvoice(invoiceNo: string) {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
 
@@ -18,14 +20,17 @@ export function useLiveInvoice(invoiceNo: string) {
 
   useEffect(() => {
     refresh();
-    const onStorage = () => refresh();
-    window.addEventListener("focus", refresh);
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("societyone-storage", onStorage);
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const schedule = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(refresh, LIVE_SYNC_DEBOUNCE_MS);
+    };
+    const unsub = subscribeLiveData("invoices", schedule);
+    window.addEventListener("focus", schedule);
     return () => {
-      window.removeEventListener("focus", refresh);
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("societyone-storage", onStorage);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      unsub();
+      window.removeEventListener("focus", schedule);
     };
   }, [refresh]);
 

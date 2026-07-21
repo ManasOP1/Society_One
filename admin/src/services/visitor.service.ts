@@ -3,6 +3,7 @@
  */
 
 import { visitorsApi, notifyDataUpdated, apiErrorMessage } from "@/lib/api-client";
+import { cacheKey, readAdminCache, writeAdminCache } from "@/lib/admin-cache";
 
 export type VisitorStatus = "Logged";
 
@@ -22,6 +23,22 @@ export interface SocietyVisitor {
 let cache: SocietyVisitor[] = [];
 const loadedFor = new Set<string>();
 const loadingFor = new Set<string>();
+
+function hydrateVisitors(societyId: string) {
+  if (loadedFor.has(societyId)) return;
+  const persisted = readAdminCache<SocietyVisitor[]>(cacheKey("visitors", societyId));
+  if (persisted?.length) {
+    cache = [...cache.filter((v) => v.societyId !== societyId), ...persisted];
+    loadedFor.add(societyId);
+  }
+}
+
+function persistVisitors(societyId: string) {
+  writeAdminCache(
+    cacheKey("visitors", societyId),
+    cache.filter((v) => v.societyId === societyId)
+  );
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapApiVisitor(raw: any, societyId: string): SocietyVisitor {
@@ -47,7 +64,8 @@ async function refreshList(societyId: string): Promise<void> {
     const mapped = rows.map((r) => mapApiVisitor(r, societyId));
     cache = [...cache.filter((v) => v.societyId !== societyId), ...mapped];
     loadedFor.add(societyId);
-    notifyDataUpdated();
+    persistVisitors(societyId);
+    notifyDataUpdated("visitors");
   } catch (e) {
     console.error("Failed to load visitors from API:", apiErrorMessage(e));
   } finally {
@@ -57,6 +75,7 @@ async function refreshList(societyId: string): Promise<void> {
 
 export const visitorService = {
   list(societyId: string): SocietyVisitor[] {
+    hydrateVisitors(societyId);
     if (!loadedFor.has(societyId)) void refreshList(societyId);
     return cache
       .filter((v) => v.societyId === societyId)
@@ -81,6 +100,7 @@ export const visitorService = {
       createdAt: new Date().toISOString(),
     };
     cache = [optimistic, ...cache];
+    persistVisitors(societyId);
     void visitorsApi
       .create(
         {
@@ -95,12 +115,14 @@ export const visitorService = {
       )
       .then((created) => {
         cache = cache.map((v) => (v.id === tempId ? mapApiVisitor(created, societyId) : v));
-        notifyDataUpdated();
+        persistVisitors(societyId);
+        notifyDataUpdated("visitors");
       })
       .catch((e) => {
         console.error("Failed to create visitor:", apiErrorMessage(e));
         cache = cache.filter((v) => v.id !== tempId);
-        notifyDataUpdated();
+        persistVisitors(societyId);
+        notifyDataUpdated("visitors");
       });
     return optimistic;
   },
@@ -110,13 +132,15 @@ export const visitorService = {
     if (!visitor) throw new Error("Visitor not found");
     if (id.startsWith("pending-")) {
       cache = cache.filter((v) => v.id !== id);
-      notifyDataUpdated();
+      persistVisitors(visitor.societyId);
+      notifyDataUpdated("visitors");
       return;
     }
     try {
       await visitorsApi.remove(id, visitor.societyId);
       cache = cache.filter((v) => v.id !== id);
-      notifyDataUpdated();
+      persistVisitors(visitor.societyId);
+      notifyDataUpdated("visitors");
     } catch (e) {
       await refreshList(visitor.societyId);
       throw new Error(apiErrorMessage(e));

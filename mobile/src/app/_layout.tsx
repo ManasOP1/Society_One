@@ -26,8 +26,9 @@ const queryClient = new QueryClient({
       staleTime: LIVE_SYNC_MS,
       refetchInterval: LIVE_SYNC_MS,
       refetchIntervalInBackground: false,
-      refetchOnMount: true,
+      refetchOnMount: false,
       refetchOnReconnect: true,
+      refetchOnWindowFocus: false,
       retry: 1,
       /** Keep current UI visible while polling — no flash to skeleton. */
       placeholderData: keepPreviousData,

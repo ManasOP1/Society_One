@@ -57,10 +57,14 @@ export default function SettingsPage() {
   const [waLogs, setWaLogs] = useState<WhatsAppLog[]>([]);
 
   useEffect(() => {
-    if (!society) return;
-    setLoading(true);
+    if (!society) {
+      setSettings(null);
+      return;
+    }
+    setSettings(settingsService.get(society.id));
+    setLoading(false);
     void settingsService
-      .fetch(society.id)
+      .fetch(society.id, { silent: true })
       .then((data) => {
         setSettings(data);
         setLogoError(null);
@@ -69,8 +73,7 @@ export default function SettingsPage() {
         setLogoError(
           error instanceof Error ? error.message : "Could not load settings."
         );
-      })
-      .finally(() => setLoading(false));
+      });
     setAudit(auditService.list(society.id));
     setWaLogs(whatsappService.list(society.id));
   }, [society]);
@@ -87,7 +90,7 @@ export default function SettingsPage() {
     if (next.invoicesSynced) {
       void invoiceService.reload(society.id);
     }
-    notifyDataUpdated();
+    notifyDataUpdated("settings");
     await refreshSociety();
     return next;
   };
