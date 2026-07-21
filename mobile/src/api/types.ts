@@ -1,5 +1,5 @@
 /**
- * Domain types — mirror of the SocietyOne backend (`backend/src/types/index.ts`).
+ * Domain types — mirror of the SocietyOne admin types (`admin/src/types/index.ts`).
  * Keep in sync with the server; these shape every API response the app consumes.
  */
 

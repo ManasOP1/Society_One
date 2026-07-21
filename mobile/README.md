@@ -1,19 +1,20 @@
-# SocietyOne — Resident Mobile App
+# SocietyOne Mobile
 
-Expo (React Native + TypeScript) app for residents: maintenance invoices, payments,
-receipts, notices, events, visitor log and society info. Light + dark theme,
-SocietyOne branding (`#6D5DF6`), Inter typography.
+Expo (React Native + TypeScript) **resident phone app**.
+
+Lives in folder `mobile/` (formerly `frontend/`). Talks to NestJS `api/` — not to the admin website.
 
 ## Run
 
 ```bash
 npm install
-npm start          # Expo dev server → press a (Android), i (iOS), w (web)
+cp .env.example .env
+npm start          # Expo → press a (Android), i (iOS), w (web)
 ```
 
-## Backend connection
+## API connection
 
-The app talks to the SocietyOne backend through a central typed API client
+The app talks to the SocietyOne **API** (`../api`) through a typed client
 (`src/api/client.ts`, axios + TanStack Query).
 
 - Set the server URL in `.env`:
@@ -50,7 +51,8 @@ GET  /events,  /events/:id                        → SocietyEvent[] / SocietyEv
 GET  /visitors                                    → SocietyVisitor[]
 ```
 
-All types live in `src/api/types.ts` (mirrors `backend/src/types/index.ts`).
+All types live in `src/api/types.ts` (mirrors `admin/src/types/index.ts`).
+See root [`STRUCTURE.md`](../STRUCTURE.md) for the full monorepo map.
 Every record is scoped server-side to the authenticated user's society.
 
 ## Auth

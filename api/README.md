@@ -1,6 +1,9 @@
-# SocietyOne API
+# SocietyOne API (`api/`)
 
-Production-grade multi-tenant NestJS backend for SocietyOne.
+Production NestJS **backend server** — JSON REST only (no web UI).
+
+Admin (`admin/`) and mobile (`mobile/`) both call this API.
+Deploy to **Render**. See root [`STRUCTURE.md`](../STRUCTURE.md).
 
 ## Stack
 

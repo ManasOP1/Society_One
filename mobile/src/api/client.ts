@@ -30,7 +30,7 @@ if (!API_BASE_URL && !IS_MOCK_API) {
   console.error(
     '[SocietyOne] EXPO_PUBLIC_API_BASE_URL is not set and EXPO_PUBLIC_USE_MOCK is not "true". ' +
       'The app has no data source — set EXPO_PUBLIC_API_BASE_URL to your Nest API (e.g. http://192.168.1.239:4000/api/v1) ' +
-      'in frontend/.env, or set EXPO_PUBLIC_USE_MOCK=true for an offline demo with fake data.'
+      'in mobile/.env, or set EXPO_PUBLIC_USE_MOCK=true for an offline demo with fake data.'
   );
 } else if (IS_MOCK_API) {
   // eslint-disable-next-line no-console -- make demo mode obvious in logs

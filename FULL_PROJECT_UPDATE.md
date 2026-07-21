@@ -2,7 +2,7 @@
 
 **Last verified:** 20 July 2026  
 **Repository:** `SocietyOne/`  
-**Status covered by this document:** `api/` (NestJS production API), `backend/` (legacy Next.js admin demo), and `frontend/` (Expo app)
+**Status covered by this document:** `api/` (NestJS production API), `admin/` (Next.js web console; formerly `backend/`), and `mobile/` (Expo app; formerly `frontend/`). See root `STRUCTURE.md` for the current layout.
 
 ---
 
