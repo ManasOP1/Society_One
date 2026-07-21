@@ -1,0 +1,26 @@
+# Render Blueprint — SocietyOne API (NestJS)
+# Repo: https://github.com/ManasOP1/Society_One
+# Dashboard: set Root Directory to "api" if not using this blueprint.
+
+services:
+  - type: web
+    name: societyone-api
+    runtime: node
+    rootDir: api
+    plan: free
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /api/v1/payments/config
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "20"
+      - key: API_PREFIX
+        value: api/v1
+      - key: RAZORPAY_ENABLED
+        value: "false"
+      # Set the rest in Render Dashboard → Environment (secrets):
+      # DATABASE_URL, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET,
+      # SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CORS_ORIGINS,
+      # APP_PUBLIC_URL, REDIS_HOST, REDIS_PORT, REDIS_PASSWORD
