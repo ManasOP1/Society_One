@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import Razorpay from 'razorpay';
@@ -12,19 +12,47 @@ export type CreateOrderInput = {
 
 @Injectable()
 export class RazorpayService {
-  private readonly client: Razorpay;
+  private readonly client: Razorpay | null;
   private readonly webhookSecret: string;
   private readonly keySecret: string;
+  private readonly keyId: string;
+  /** When false, online Razorpay checkout is disabled (manual admin collection still works). */
+  readonly enabled: boolean;
 
   constructor(private readonly config: ConfigService) {
-    const keyId = this.config.getOrThrow<string>('RAZORPAY_KEY_ID');
-    this.keySecret = this.config.getOrThrow<string>('RAZORPAY_KEY_SECRET');
-    this.webhookSecret = this.config.getOrThrow<string>('RAZORPAY_WEBHOOK_SECRET');
-    this.client = new Razorpay({ key_id: keyId, key_secret: this.keySecret });
+    const flag = String(this.config.get<string>('RAZORPAY_ENABLED') ?? 'false')
+      .trim()
+      .toLowerCase();
+    this.keyId = this.config.get<string>('RAZORPAY_KEY_ID') ?? '';
+    this.keySecret = this.config.get<string>('RAZORPAY_KEY_SECRET') ?? '';
+    this.webhookSecret = this.config.get<string>('RAZORPAY_WEBHOOK_SECRET') ?? '';
+
+    const keysLookReal =
+      !!this.keyId &&
+      !!this.keySecret &&
+      !this.keyId.includes('placeholder') &&
+      !this.keySecret.includes('placeholder');
+
+    this.enabled = (flag === 'true' || flag === '1') && keysLookReal;
+
+    if (this.enabled) {
+      this.client = new Razorpay({ key_id: this.keyId, key_secret: this.keySecret });
+    } else {
+      this.client = null;
+    }
+  }
+
+  assertEnabled(): void {
+    if (!this.enabled || !this.client) {
+      throw new ServiceUnavailableException(
+        'Online payments (Razorpay) are temporarily disabled. Society admins can still record cash/cheque collections. Razorpay will be enabled after deploy.',
+      );
+    }
   }
 
   async createOrder(input: CreateOrderInput) {
-    return this.client.orders.create({
+    this.assertEnabled();
+    return this.client!.orders.create({
       amount: input.amountPaise,
       currency: input.currency ?? 'INR',
       receipt: input.receipt,
@@ -39,6 +67,7 @@ export class RazorpayService {
     paymentId: string;
     signature: string;
   }): boolean {
+    this.assertEnabled();
     const payload = `${params.orderId}|${params.paymentId}`;
     const expected = crypto
       .createHmac('sha256', this.keySecret)
@@ -49,6 +78,7 @@ export class RazorpayService {
 
   /** Webhook signature verification (HMAC of raw body). */
   verifyWebhookSignature(rawBody: Buffer | string, signature: string): boolean {
+    this.assertEnabled();
     const expected = crypto
       .createHmac('sha256', this.webhookSecret)
       .update(rawBody)
@@ -57,7 +87,8 @@ export class RazorpayService {
   }
 
   async fetchPayment(paymentId: string) {
-    return this.client.payments.fetch(paymentId);
+    this.assertEnabled();
+    return this.client!.payments.fetch(paymentId);
   }
 }
 

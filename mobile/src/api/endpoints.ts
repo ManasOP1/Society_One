@@ -121,6 +121,19 @@ export const paymentApi = {
       };
     }
 
+    // Online Razorpay — disabled until post-deploy enable
+    const { data: payConfig } = await api.get<{
+      razorpayEnabled?: boolean;
+      onlinePaymentsEnabled?: boolean;
+      message?: string;
+    }>('/payments/config');
+    if (!payConfig.razorpayEnabled && !payConfig.onlinePaymentsEnabled) {
+      throw new Error(
+        payConfig.message ??
+          'Online payments are temporarily disabled. Please pay at the society office.',
+      );
+    }
+
     const { data: order } = await api.post<{
       orderId: string;
       amount: number;

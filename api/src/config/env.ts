@@ -32,9 +32,16 @@ export const envSchema = z
     /** Newer Supabase dashboard key name — mapped to SERVICE_ROLE below */
     SUPABASE_SECRET_KEY: z.string().min(1).optional(),
     SUPABASE_STORAGE_BUCKET: z.string().default('societyone-docs'),
-    RAZORPAY_KEY_ID: z.string().default('rzp_test_placeholder'),
-    RAZORPAY_KEY_SECRET: z.string().default('rzp_test_secret_placeholder'),
-    RAZORPAY_WEBHOOK_SECRET: z.string().default('whsec_placeholder'),
+    RAZORPAY_ENABLED: z
+      .string()
+      .optional()
+      .transform((v) => {
+        const s = (v ?? 'false').trim().toLowerCase();
+        return s === 'true' || s === '1';
+      }),
+    RAZORPAY_KEY_ID: emptyToUndefined,
+    RAZORPAY_KEY_SECRET: emptyToUndefined,
+    RAZORPAY_WEBHOOK_SECRET: emptyToUndefined,
     SMTP_HOST: emptyToUndefined,
     SMTP_PORT: z.coerce.number().optional(),
     SMTP_USER: emptyToUndefined,

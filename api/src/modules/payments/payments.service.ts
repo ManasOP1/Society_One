@@ -29,6 +29,17 @@ export class PaymentsService {
     private readonly notificationQueue: Queue<NotificationJob>,
   ) {}
 
+  /** Public status for clients — whether Razorpay checkout is live. */
+  getPaymentConfig() {
+    return {
+      razorpayEnabled: this.razorpay.enabled,
+      onlinePaymentsEnabled: this.razorpay.enabled,
+      message: this.razorpay.enabled
+        ? 'Online payments are available.'
+        : 'Online payments are temporarily disabled. Pay at the society office or ask admin to record payment.',
+    };
+  }
+
   /**
    * Resident/admin creates a Razorpay order for an outstanding invoice.
    * Payment success is NEVER trusted from the client — webhook settles.
@@ -40,6 +51,8 @@ export class PaymentsService {
     invoiceNo: string;
     amount?: number;
   }) {
+    this.razorpay.assertEnabled();
+
     const invoice = await this.prisma.invoice.findFirst({
       where: {
         societyId: params.societyId,
@@ -113,6 +126,8 @@ export class PaymentsService {
     paymentId: string;
     signature: string;
   }) {
+    this.razorpay.assertEnabled();
+
     if (
       !this.razorpay.verifyCheckoutSignature({
         orderId: params.orderId,

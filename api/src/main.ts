@@ -46,7 +46,7 @@ async function bootstrap() {
   const swagger = new DocumentBuilder()
     .setTitle('SocietyOne API')
     .setDescription(
-      'Production multi-tenant society management API. Payments settle only via verified Razorpay webhooks.',
+      'Production multi-tenant society management API. Razorpay online payments are optional (RAZORPAY_ENABLED).',
     )
     .setVersion('1.0')
     .addBearerAuth()

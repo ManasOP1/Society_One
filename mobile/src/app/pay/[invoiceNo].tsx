@@ -16,7 +16,6 @@ import { useAuth } from '@/context/auth';
 import { useInvoice, usePayInvoice } from '@/hooks/queries';
 import { useTheme } from '@/hooks/use-theme';
 import { PaymentSuccessAnimation } from '@/components/payments/payment-success-animation';
-import { isRazorpayCheckoutAvailable } from '@/utils/razorpay-checkout';
 import { formatDate, formatINR, formatMonth } from '@/utils/format';
 
 const RESIDENT_MODES: { mode: PaymentMode; icon: keyof typeof Feather.glyphMap; hint: string }[] = [
@@ -230,9 +229,7 @@ export default function PayScreen() {
       <AppText variant="caption" color="textSecondary" style={{ textAlign: 'center' }}>
         {isAdmin
           ? 'Recording a collection updates the invoice and creates an auditable receipt.'
-          : isRazorpayCheckoutAvailable()
-            ? 'Secured by Razorpay · UPI, cards & net banking'
-            : 'Build with `expo run:android` to enable Razorpay Checkout (not available in Expo Go).'}
+          : 'Online Razorpay checkout is temporarily off — pay at the society office for now.'}
       </AppText>
     </Screen>
   );

@@ -1,6 +1,7 @@
 ﻿import {
   Body,
   Controller,
+  Get,
   Headers,
   Post,
   Req,
@@ -62,6 +63,13 @@ const MANUAL_MODE_MAP: Record<string, string> = {
 @Controller()
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
+
+  /** Whether Razorpay online checkout is enabled (safe for clients before Pay). */
+  @Public()
+  @Get('payments/config')
+  paymentConfig() {
+    return this.payments.getPaymentConfig();
+  }
 
   @ApiBearerAuth()
   @Roles(Role.RESIDENT, Role.SOCIETY_ADMIN)

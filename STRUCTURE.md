@@ -47,6 +47,7 @@ SocietyOne/
 - **`api` does not render UI** — only JSON REST (`/api/v1/...`).
 - **`admin` does not hold business DB logic** — it calls `api`.
 - **`mobile` does not hold business DB logic** — it calls `api`.
+- **Razorpay** is **off by default** (`RAZORPAY_ENABLED=false`). Admins can still record cash/cheque. Turn on after deploy with real keys.
 
 ## Deploy checklist
 
