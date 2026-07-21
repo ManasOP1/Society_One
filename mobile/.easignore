@@ -1,6 +1,10 @@
 # EAS Build upload ignore — keep Gradle/native caches out of the tarball
 # (Windows often locks android/.gradle/*.lock and breaks compress/upload)
 
+# Never upload local native projects — EAS runs expo prebuild on Linux.
+# Local android/ may contain Windows-only paths (org.gradle.java.home).
+android/
+
 android/.gradle/
 **/.gradle/
 android/app/build/
