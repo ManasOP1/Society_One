@@ -26,6 +26,16 @@ export const envSchema = z
     REDIS_HOST: z.string().default('127.0.0.1'),
     REDIS_PORT: z.coerce.number().default(6379),
     REDIS_PASSWORD: z.string().optional(),
+    /** Set true for Upstash / other TLS Redis (e.g. rediss://). */
+    REDIS_TLS: z
+      .string()
+      .optional()
+      .transform((v) => {
+        const s = (v ?? 'false').trim().toLowerCase();
+        return s === 'true' || s === '1';
+      }),
+    /** Optional full URL — overrides host/port/password when set (rediss:// for Upstash). */
+    REDIS_URL: emptyToUndefined,
     SUPABASE_URL: z.string().url(),
     /** Preferred name used by Nest services */
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
