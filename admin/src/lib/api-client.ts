@@ -7,7 +7,17 @@
  */
 
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "http://localhost:4000/api/v1";
+  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "/api/v1";
+
+function apiUnreachableMessage(): string {
+  if (API_BASE_URL.includes("localhost")) {
+    return `Cannot reach the API (${API_BASE_URL}). Start Nest: cd api && npm run start:dev`;
+  }
+  if (API_BASE_URL.startsWith("/")) {
+    return `Cannot reach the API (${API_BASE_URL}). On Vercel, set API_PROXY_TARGET to your Render API URL (e.g. https://your-api.onrender.com) and redeploy.`;
+  }
+  return `Cannot reach the API (${API_BASE_URL}). Check the Nest API is live on Render and CORS_ORIGINS includes this admin URL.`;
+}
 
 export const TOKEN_KEYS = {
   access: "so_access_token",
@@ -117,7 +127,7 @@ export class ApiError extends Error {
 export function apiErrorMessage(error: unknown): string {
   if (error instanceof ApiError) return error.message;
   if (error instanceof TypeError && /failed to fetch|networkerror|load failed/i.test(error.message)) {
-    return `Cannot reach the API (${API_BASE_URL}). Make sure the Nest server is running: cd api && npm run start:dev`;
+    return apiUnreachableMessage();
   }
   if (error instanceof Error && error.message) return error.message;
   return "Something went wrong. Please try again.";
@@ -163,10 +173,7 @@ export async function apiFetch<T>(path: string, init: ApiFetchOptions = {}): Pro
       return await fetch(url, { ...rest, headers: finalHeaders });
     } catch (error) {
       if (error instanceof TypeError) {
-        throw new ApiError(
-          0,
-          `Cannot reach the API (${API_BASE_URL}). Start Nest: cd api && npm run start:dev`
-        );
+        throw new ApiError(0, apiUnreachableMessage());
       }
       throw error;
     }
