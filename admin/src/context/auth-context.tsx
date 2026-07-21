@@ -122,13 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [sessionReady, setSessionReady] = useState(() => {
     if (typeof window === "undefined") return false;
     if (!hasAccessToken()) return true;
-    const stored = getStoredUser();
-    if (!stored) return false;
-    if (stored.role === "SUPER_ADMIN") {
-      return (readAdminCache<Society[]>(cacheKey("societies"))?.length ?? 0) > 0;
-    }
-    if (!stored.societyId) return false;
-    return !!readAdminCache<Society>(cacheKey("society", stored.societyId));
+    return !!getStoredUser();
   });
   const [members, setMembersState] = useState<Member[]>(() => {
     if (typeof window === "undefined") return [];
@@ -215,7 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  // Bootstrap session from persisted tokens on first load.
+  // Bootstrap: validate token quickly, load society data in background.
   useEffect(() => {
     void (async () => {
       if (!hasAccessToken()) {
@@ -226,20 +220,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const me = await authApi.me();
         setUser(me as ApiUser);
+        setIsLoading(false);
+        setSessionReady(true);
         if (me.role === "SUPER_ADMIN") {
-          const list = await societyService.list().catch(() => [] as Society[]);
-          setSocieties(list);
-          writeAdminCache(cacheKey("societies"), list);
+          void societyService
+            .list()
+            .then((list) => {
+              setSocieties(list);
+              writeAdminCache(cacheKey("societies"), list);
+            })
+            .catch(() => undefined);
         } else if (me.societyId) {
           membersLoadedFor.current = me.societyId;
-          await loadSocietyData(me as ApiUser);
+          void loadSocietyData(me as ApiUser);
         }
       } catch {
         clearApiSession();
         setUser(null);
         setSociety(null);
         setMembersState([]);
-      } finally {
         setIsLoading(false);
         setSessionReady(true);
       }
@@ -298,8 +297,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           res.user
         );
         setUser(res.user);
+        setSessionReady(true);
         if (res.user.societyId) {
-          await loadSocietyData(res.user);
+          membersLoadedFor.current = res.user.societyId;
+          void loadSocietyData(res.user);
         }
         return null;
       } catch (e) {
@@ -321,9 +322,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           res.user
         );
         setUser(res.user);
-        const list = await societyService.list().catch(() => [] as Society[]);
-        setSocieties(list);
-        writeAdminCache(cacheKey("societies"), list);
+        setSessionReady(true);
+        void societyService
+          .list()
+          .then((list) => {
+            setSocieties(list);
+            writeAdminCache(cacheKey("societies"), list);
+          })
+          .catch(() => undefined);
         return null;
       } catch (e) {
         return apiErrorMessage(e);

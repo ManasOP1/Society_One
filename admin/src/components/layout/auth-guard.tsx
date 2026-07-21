@@ -4,10 +4,10 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 
-function LoadingScreen() {
+export function AuthLoadingScreen() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+    <div className="flex min-h-screen items-center justify-center bg-[#F5F7FB] dark:bg-slate-950">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#4F46E5] border-t-transparent" />
     </div>
   );
 }
@@ -16,7 +16,6 @@ function LoadingScreen() {
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, sessionReady, isSuperAdmin, society } = useAuth();
   const router = useRouter();
-  const hasCachedSession = isAuthenticated && !!society;
 
   useEffect(() => {
     if (!sessionReady || isLoading) return;
@@ -24,18 +23,15 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       router.replace("/super-admin");
       return;
     }
-    if (!isAuthenticated || !society) {
+    if (!isAuthenticated) {
       router.replace("/login");
     }
-  }, [isAuthenticated, isLoading, sessionReady, isSuperAdmin, society, router]);
+  }, [isAuthenticated, isLoading, sessionReady, isSuperAdmin, router]);
 
-  if (!sessionReady && !hasCachedSession) return <LoadingScreen />;
-  if (sessionReady && isLoading && !hasCachedSession) return <LoadingScreen />;
-  if (isSuperAdmin) return <LoadingScreen />;
-  if (!isAuthenticated || !society) {
-    if (isLoading || !sessionReady) return <LoadingScreen />;
-    return <LoadingScreen />;
-  }
+  if (!sessionReady || isLoading) return <AuthLoadingScreen />;
+  if (isSuperAdmin) return <AuthLoadingScreen />;
+  if (!isAuthenticated) return <AuthLoadingScreen />;
+  if (!society) return <AuthLoadingScreen />;
 
   return <>{children}</>;
 }
@@ -51,8 +47,8 @@ export function SuperAdminGuard({ children }: { children: React.ReactNode }) {
     }
   }, [isLoading, sessionReady, isSuperAdmin, router]);
 
-  if (!sessionReady || isLoading) return <LoadingScreen />;
-  if (!isSuperAdmin) return <LoadingScreen />;
+  if (!sessionReady || isLoading) return <AuthLoadingScreen />;
+  if (!isSuperAdmin) return <AuthLoadingScreen />;
 
   return <>{children}</>;
 }

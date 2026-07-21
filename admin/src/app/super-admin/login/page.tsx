@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { AuthLoadingScreen } from "@/components/layout/auth-guard";
 import { useAuth } from "@/context/auth-context";
 import { SUPER_ADMIN } from "@/services/society.service";
 import { Button } from "@/components/ui/button";
@@ -11,38 +12,33 @@ import { Input } from "@/components/ui/input";
 export default function SuperAdminLoginPage() {
   const { loginSuperAdmin, isSuperAdmin, isLoading, sessionReady } = useAuth();
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState<string>(SUPER_ADMIN.email);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const sessionKnown = sessionReady && !isLoading;
 
   useEffect(() => {
-    setMounted(true);
-    setEmail(SUPER_ADMIN.email);
-  }, []);
-
-  useEffect(() => {
-    if (!mounted || !sessionReady || isLoading) return;
-    if (isSuperAdmin) router.replace("/super-admin");
-  }, [mounted, isLoading, sessionReady, isSuperAdmin, router]);
+    if (!sessionKnown || !isSuperAdmin) return;
+    router.replace("/super-admin");
+  }, [sessionKnown, isSuperAdmin, router]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
     setError(null);
     const err = await loginSuperAdmin(email, password);
     if (err) {
+      setSubmitting(false);
       setError(err);
       return;
     }
     router.replace("/super-admin");
   };
 
-  if (!mounted) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
-      </div>
-    );
+  if (!sessionKnown || isSuperAdmin || submitting) {
+    return <AuthLoadingScreen />;
   }
 
   return (
@@ -87,8 +83,8 @@ export default function SuperAdminLoginPage() {
                 {error}
               </p>
             )}
-            <Button type="submit" className="w-full">
-              Sign in
+            <Button type="submit" className="w-full" disabled={submitting}>
+              {submitting ? "Signing in…" : "Sign in"}
             </Button>
           </div>
         </form>

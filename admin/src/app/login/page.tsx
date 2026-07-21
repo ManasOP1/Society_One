@@ -5,50 +5,43 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Lock, Mail, Shield } from "lucide-react";
 import { LayersIcon } from "@animateicons/react/lucide";
+import { AuthLoadingScreen } from "@/components/layout/auth-guard";
 import { useAuth } from "@/context/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export default function LoginPage() {
-  const { login, isAuthenticated, isSuperAdmin, isLoading, sessionReady } = useAuth();
+  const { login, isAuthenticated, isSuperAdmin, isLoading, sessionReady, society } =
+    useAuth();
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const sessionKnown = sessionReady && !isLoading;
 
   useEffect(() => {
-    if (!mounted || !sessionReady || isLoading) return;
+    if (!sessionKnown) return;
     if (isSuperAdmin) router.replace("/super-admin");
-    else if (isAuthenticated) router.replace("/");
-  }, [mounted, isAuthenticated, isSuperAdmin, isLoading, sessionReady, router]);
+    else if (isAuthenticated && society) router.replace("/");
+  }, [sessionKnown, isAuthenticated, isSuperAdmin, society, router]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     const err = await login("", email, password);
-    setSubmitting(false);
     if (err) {
+      setSubmitting(false);
       setError(err);
       return;
     }
     router.replace("/");
   };
 
-  // Defer form until client mount so password-manager extensions
-  // cannot mutate SSR HTML and trigger a hydration mismatch.
-  if (!mounted) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#F5F7FB] dark:bg-slate-950">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#4F46E5] border-t-transparent" />
-      </div>
-    );
+  if (!sessionKnown || submitting || isAuthenticated) {
+    return <AuthLoadingScreen />;
   }
 
   return (
