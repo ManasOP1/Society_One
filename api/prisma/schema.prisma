@@ -1,0 +1,866 @@
+// SocietyOne Enterprise Prisma Schema (target design)
+// Apply alongside SQL migrations in supabase/migrations/enterprise/
+// Partitions / RLS / triggers / matviews are SQL-owned — not expressible fully in Prisma.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [pgcrypto, citext]
+}
+
+// ─── Lookup codes (seeded; prefer tables over PG enums) ───
+
+model LkRole {
+  code        String   @id @db.VarChar(32)
+  label       String
+  sortOrder   Int      @default(0) @map("sort_order")
+  assignments UserRoleAssignment[]
+
+  @@map("lk_role")
+}
+
+model LkSocietyStatus {
+  code   String @id @db.VarChar(32)
+  label  String
+  @@map("lk_society_status")
+}
+
+model LkInvoiceStatus {
+  code  String @id @db.VarChar(32)
+  label String
+  @@map("lk_invoice_status")
+}
+
+model LkPaymentStatus {
+  code  String @id @db.VarChar(32)
+  label String
+  @@map("lk_payment_status")
+}
+
+model LkPaymentMode {
+  code  String @id @db.VarChar(32)
+  label String
+  @@map("lk_payment_mode")
+}
+
+model LkVisitorStatus {
+  code  String @id @db.VarChar(32)
+  label String
+  @@map("lk_visitor_status")
+}
+
+model LkComplaintStatus {
+  code  String @id @db.VarChar(32)
+  label String
+  @@map("lk_complaint_status")
+}
+
+model LkComplaintPriority {
+  code  String @id @db.VarChar(32)
+  label String
+  @@map("lk_complaint_priority")
+}
+
+model LkNotificationChannel {
+  code  String @id @db.VarChar(32)
+  label String
+  @@map("lk_notification_channel")
+}
+
+model LkNotificationStatus {
+  code  String @id @db.VarChar(32)
+  label String
+  @@map("lk_notification_status")
+}
+
+model LkDocumentType {
+  code  String @id @db.VarChar(32)
+  label String
+  @@map("lk_document_type")
+}
+
+model LkEventStatus {
+  code  String @id @db.VarChar(32)
+  label String
+  @@map("lk_event_status")
+}
+
+// ─── Tenancy & identity ───
+
+model Tenant {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String
+  slug         String    @unique
+  statusCode   String    @default("ACTIVE") @map("status_code") @db.VarChar(32)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById  String?   @map("created_by_id") @db.Uuid
+  updatedById  String?   @map("updated_by_id") @db.Uuid
+  deletedById  String?   @map("deleted_by_id") @db.Uuid
+  rowVersion   Int       @default(1) @map("row_version")
+
+  societies Society[]
+  users     User[]
+
+  @@index([statusCode])
+  @@map("tenants")
+}
+
+model Society {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  name            String
+  slug            String
+  address         String
+  registrationNo  String?   @map("registration_no")
+  panNumber       String?   @map("pan_number")
+  totalFlats      Int       @default(0) @map("total_flats")
+  occupiedFlats   Int       @default(0) @map("occupied_flats")
+  statusCode      String    @default("ACTIVE") @map("status_code") @db.VarChar(32)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById     String?   @map("created_by_id") @db.Uuid
+  updatedById     String?   @map("updated_by_id") @db.Uuid
+  deletedById     String?   @map("deleted_by_id") @db.Uuid
+  rowVersion      Int       @default(1) @map("row_version")
+
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  settings SocietySettings?
+  wings    Wing[]
+  flats    Flat[]
+  members  Member[]
+  users    User[]
+  invoices Invoice[]
+  payments Payment[]
+  receipts Receipt[]
+  notices  Notice[]
+  events   SocietyEvent[]
+  visitors Visitor[]
+  complaints Complaint[]
+  documents  Document[]
+  expenses   Expense[]
+  chargeCatalog ChargeCatalog[]
+  sequences  NumberSequence[]
+  roleAssignments UserRoleAssignment[]
+  auditLogs  AuditLog[]
+  activityLogs ActivityLog[]
+  notifications Notification[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, statusCode])
+  @@index([tenantId, deletedAt])
+  @@map("societies")
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String?   @map("tenant_id") @db.Uuid
+  societyId    String?   @map("society_id") @db.Uuid
+  memberId     String?   @unique @map("member_id") @db.Uuid
+  email        String    @unique @db.Citext
+  passwordHash String    @map("password_hash")
+  name         String
+  phone        String?
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById  String?   @map("created_by_id") @db.Uuid
+  updatedById  String?   @map("updated_by_id") @db.Uuid
+  deletedById  String?   @map("deleted_by_id") @db.Uuid
+  rowVersion   Int       @default(1) @map("row_version")
+
+  tenant   Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  society  Society? @relation(fields: [societyId], references: [id], onDelete: Restrict)
+  member   Member?  @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  roles    UserRoleAssignment[]
+  refreshTokens RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+
+  @@index([tenantId, societyId])
+  @@index([societyId, isActive])
+  @@map("users")
+}
+
+model UserRoleAssignment {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String?   @map("tenant_id") @db.Uuid
+  societyId  String?   @map("society_id") @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  roleCode   String    @map("role_code") @db.VarChar(32)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  user User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role LkRole @relation(fields: [roleCode], references: [code], onDelete: Restrict)
+  society Society? @relation(fields: [societyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleCode, societyId])
+  @@index([societyId, roleCode])
+  @@map("user_role_assignments")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+// ─── Property ───
+
+model Wing {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  societyId  String    @map("society_id") @db.Uuid
+  code       String    @db.VarChar(16)
+  name       String?
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById String?  @map("created_by_id") @db.Uuid
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  deletedById String?  @map("deleted_by_id") @db.Uuid
+  rowVersion Int       @default(1) @map("row_version")
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+  flats   Flat[]
+
+  @@unique([societyId, code])
+  @@index([tenantId, societyId])
+  @@map("wings")
+}
+
+model Flat {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  societyId  String    @map("society_id") @db.Uuid
+  wingId     String    @map("wing_id") @db.Uuid
+  flatNo            String    @map("flat_no") @db.VarChar(32)
+  floor             Int?
+  areaSqft          Decimal?  @map("area_sqft") @db.Decimal(10, 2)
+  /** ONE_BHK | TWO_BHK | THREE_BHK */
+  bhkType           String?   @map("bhk_type") @db.VarChar(16)
+  /** Per-flat monthly maintenance override (used when generating invoices). */
+  maintenanceAmount Decimal?  @map("maintenance_amount") @db.Decimal(14, 2)
+  parking           String?
+  isOccupied Boolean   @default(false) @map("is_occupied")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById String?  @map("created_by_id") @db.Uuid
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  deletedById String?  @map("deleted_by_id") @db.Uuid
+  rowVersion Int       @default(1) @map("row_version")
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+  wing    Wing    @relation(fields: [wingId], references: [id], onDelete: Restrict)
+  memberFlats MemberFlat[]
+  invoices Invoice[]
+
+  @@unique([societyId, wingId, flatNo])
+  @@index([tenantId, societyId])
+  @@index([societyId, isOccupied])
+  @@map("flats")
+}
+
+model Member {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  societyId   String    @map("society_id") @db.Uuid
+  ownerName   String    @map("owner_name")
+  phone       String?
+  email       String    @db.Citext
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById String?   @map("created_by_id") @db.Uuid
+  updatedById String?   @map("updated_by_id") @db.Uuid
+  deletedById String?   @map("deleted_by_id") @db.Uuid
+  rowVersion  Int       @default(1) @map("row_version")
+
+  society     Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+  user        User?
+  memberFlats MemberFlat[]
+  invoices    Invoice[]
+  payments    Payment[]
+  receipts    Receipt[]
+  complaints  Complaint[]
+  visitors    Visitor[]
+
+  @@index([tenantId, societyId])
+  @@index([societyId, email])
+  @@index([societyId, isActive])
+  @@map("members")
+}
+
+model MemberFlat {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  societyId  String    @map("society_id") @db.Uuid
+  memberId   String    @map("member_id") @db.Uuid
+  flatId     String    @map("flat_id") @db.Uuid
+  relation   String    @default("OWNER") @db.VarChar(32) // OWNER | TENANT | FAMILY
+  isPrimary  Boolean   @default(true) @map("is_primary")
+  validFrom  DateTime  @default(now()) @map("valid_from") @db.Date
+  validTo    DateTime? @map("valid_to") @db.Date
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  flat   Flat   @relation(fields: [flatId], references: [id], onDelete: Restrict)
+
+  @@index([societyId, memberId])
+  @@index([societyId, flatId])
+  @@map("member_flats")
+}
+
+// ─── Billing ───
+
+model SocietySettings {
+  id                  String   @id @default(uuid()) @db.Uuid
+  tenantId            String   @map("tenant_id") @db.Uuid
+  societyId           String   @unique @map("society_id") @db.Uuid
+  logoText            String   @default("SO") @map("logo_text")
+  logoUrl             String?  @map("logo_url")
+  bankName            String?  @map("bank_name")
+  bankAccount         String?  @map("bank_account")
+  bankIfsc            String?  @map("bank_ifsc")
+  upiId               String?  @map("upi_id")
+  invoicePrefix       String   @default("INV") @map("invoice_prefix")
+  receiptPrefix       String   @default("REC") @map("receipt_prefix")
+  maintenanceAmount   Decimal  @default(0) @map("maintenance_amount") @db.Decimal(14, 2)
+  maintenanceAmount1Bhk Decimal @default(0) @map("maintenance_amount_1_bhk") @db.Decimal(14, 2)
+  maintenanceAmount2Bhk Decimal @default(0) @map("maintenance_amount_2_bhk") @db.Decimal(14, 2)
+  maintenanceAmount3Bhk Decimal @default(0) @map("maintenance_amount_3_bhk") @db.Decimal(14, 2)
+  lateFeeAmount       Decimal  @default(500) @map("late_fee_amount") @db.Decimal(14, 2)
+  dueDay              Int      @default(10) @map("due_day")
+  municipalDues       Decimal  @default(0) @map("municipal_dues") @db.Decimal(14, 2)
+  adminExpenses       Decimal  @default(0) @map("admin_expenses") @db.Decimal(14, 2)
+  sinkingFunds        Decimal  @default(0) @map("sinking_funds") @db.Decimal(14, 2)
+  buildingMaintenance Decimal  @default(0) @map("building_maintenance") @db.Decimal(14, 2)
+  parkingCharges      Decimal  @default(0) @map("parking_charges") @db.Decimal(14, 2)
+  nonOccupancyCharges Decimal  @default(0) @map("non_occupancy_charges") @db.Decimal(14, 2)
+  gstNote             String?  @map("gst_note")
+  interestNote        String?  @map("interest_note")
+  razorpayKeyId       String?  @map("razorpay_key_id")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById         String?  @map("created_by_id") @db.Uuid
+  updatedById         String?  @map("updated_by_id") @db.Uuid
+  deletedById         String?  @map("deleted_by_id") @db.Uuid
+  rowVersion          Int      @default(1) @map("row_version")
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, societyId])
+  @@map("society_settings")
+}
+
+model ChargeCatalog {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  societyId   String    @map("society_id") @db.Uuid
+  code        String    @db.VarChar(64)
+  description String
+  amount      Decimal   @db.Decimal(14, 2)
+  isActive    Boolean   @default(true) @map("is_active")
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById String?   @map("created_by_id") @db.Uuid
+  updatedById String?   @map("updated_by_id") @db.Uuid
+  deletedById String?   @map("deleted_by_id") @db.Uuid
+  rowVersion  Int       @default(1) @map("row_version")
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+
+  @@unique([societyId, code])
+  @@index([tenantId, societyId, isActive])
+  @@map("charge_catalog")
+}
+
+model NumberSequence {
+  id         String @id @default(uuid()) @db.Uuid
+  tenantId   String @map("tenant_id") @db.Uuid
+  societyId  String @map("society_id") @db.Uuid
+  seqType    String @map("seq_type") @db.VarChar(32) // INVOICE | RECEIPT
+  year       Int
+  nextValue  Int    @default(1) @map("next_value")
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+
+  @@unique([societyId, seqType, year])
+  @@map("number_sequences")
+}
+
+model Invoice {
+  id                  String    @id @default(uuid()) @db.Uuid
+  tenantId            String    @map("tenant_id") @db.Uuid
+  societyId           String    @map("society_id") @db.Uuid
+  memberId            String    @map("member_id") @db.Uuid
+  flatId              String?   @map("flat_id") @db.Uuid
+  invoiceNo           String    @map("invoice_no")
+  billingMonth        String    @map("billing_month") @db.VarChar(7) // YYYY-MM
+  year                Int
+  issueDate           DateTime  @map("issue_date") @db.Date
+  dueDate             DateTime  @map("due_date") @db.Date
+  maintenanceSubtotal Decimal   @map("maintenance_subtotal") @db.Decimal(14, 2)
+  arrearsSubtotal     Decimal   @default(0) @map("arrears_subtotal") @db.Decimal(14, 2)
+  lateFee             Decimal   @default(0) @map("late_fee") @db.Decimal(14, 2)
+  previousOutstanding Decimal   @default(0) @map("previous_outstanding") @db.Decimal(14, 2)
+  advance             Decimal   @default(0) @db.Decimal(14, 2)
+  totalAmount         Decimal   @map("total_amount") @db.Decimal(14, 2)
+  paidAmount          Decimal   @default(0) @map("paid_amount") @db.Decimal(14, 2)
+  // outstanding stored; also maintain via trigger/generated in SQL
+  outstanding         Decimal   @db.Decimal(14, 2)
+  statusCode          String    @default("PENDING") @map("status_code") @db.VarChar(32)
+  notes               String?
+  pdfUrl              String?   @map("pdf_url")
+  cancelledAt         DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById         String?   @map("created_by_id") @db.Uuid
+  updatedById         String?   @map("updated_by_id") @db.Uuid
+  deletedById         String?   @map("deleted_by_id") @db.Uuid
+  rowVersion          Int       @default(1) @map("row_version")
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+  member  Member  @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  flat    Flat?   @relation(fields: [flatId], references: [id], onDelete: SetNull)
+  lines   InvoiceLine[]
+  payments Payment[]
+  receipts Receipt[]
+
+  @@unique([societyId, invoiceNo])
+  @@unique([societyId, memberId, billingMonth])
+  @@index([tenantId, societyId, statusCode])
+  @@index([societyId, billingMonth])
+  @@index([societyId, memberId])
+  @@index([dueDate, statusCode])
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  societyId   String   @map("society_id") @db.Uuid
+  invoiceId   String   @map("invoice_id") @db.Uuid
+  lineNo      Int      @map("line_no")
+  code        String?  @db.VarChar(64)
+  description String
+  amount      Decimal  @db.Decimal(14, 2)
+  isDeduction Boolean  @default(false) @map("is_deduction")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([invoiceId, lineNo])
+  @@index([tenantId, societyId, invoiceId])
+  @@map("invoice_lines")
+}
+
+// ─── Payments (logical; physical partitions in SQL) ───
+
+model Payment {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  societyId         String    @map("society_id") @db.Uuid
+  invoiceId         String    @map("invoice_id") @db.Uuid
+  memberId          String    @map("member_id") @db.Uuid
+  amount            Decimal   @db.Decimal(14, 2)
+  currency          String    @default("INR") @db.VarChar(3)
+  modeCode          String    @default("RAZORPAY") @map("mode_code") @db.VarChar(32)
+  statusCode        String    @default("CREATED") @map("status_code") @db.VarChar(32)
+  razorpayOrderId   String?   @unique @map("razorpay_order_id")
+  razorpayPaymentId String?   @unique @map("razorpay_payment_id")
+  razorpaySignature String?   @map("razorpay_signature")
+  idempotencyKey    String?   @unique @map("idempotency_key")
+  failureReason     String?   @map("failure_reason")
+  metadata          Json?
+  paidAt            DateTime? @map("paid_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById       String?   @map("created_by_id") @db.Uuid
+  updatedById       String?   @map("updated_by_id") @db.Uuid
+  deletedById       String?   @map("deleted_by_id") @db.Uuid
+  rowVersion        Int       @default(1) @map("row_version")
+
+  society      Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+  invoice      Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  member       Member  @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  transactions PaymentTransaction[]
+  receipt      Receipt?
+
+  @@index([tenantId, societyId, statusCode])
+  @@index([societyId, invoiceId])
+  @@index([societyId, memberId])
+  @@index([createdAt])
+  @@map("payments")
+}
+
+model PaymentTransaction {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  societyId   String   @map("society_id") @db.Uuid
+  paymentId   String   @map("payment_id") @db.Uuid
+  eventType   String   @map("event_type") @db.VarChar(64)
+  amount      Decimal  @db.Decimal(14, 2)
+  statusCode  String   @map("status_code") @db.VarChar(32)
+  providerRef String?  @map("provider_ref")
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  // append-only: no updatedAt / soft delete of money trail
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, societyId, paymentId])
+  @@index([createdAt])
+  @@map("payment_transactions")
+}
+
+model PaymentWebhook {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String?   @map("tenant_id") @db.Uuid
+  societyId       String?   @map("society_id") @db.Uuid
+  provider        String    @default("razorpay") @db.VarChar(32)
+  eventId         String    @map("event_id")
+  eventType       String    @map("event_type")
+  payload         Json
+  signatureValid  Boolean?  @map("signature_valid")
+  processedAt     DateTime? @map("processed_at") @db.Timestamptz(6)
+  processingError String?   @map("processing_error")
+  receivedAt      DateTime  @default(now()) @map("received_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([provider, eventId])
+  @@index([eventType, receivedAt])
+  @@index([societyId, receivedAt])
+  @@map("payment_webhooks")
+}
+
+model Receipt {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  societyId   String   @map("society_id") @db.Uuid
+  invoiceId   String   @map("invoice_id") @db.Uuid
+  paymentId   String   @unique @map("payment_id") @db.Uuid
+  memberId    String   @map("member_id") @db.Uuid
+  receiptNo   String   @map("receipt_no")
+  amount      Decimal  @db.Decimal(14, 2)
+  lateFee     Decimal  @default(0) @map("late_fee") @db.Decimal(14, 2)
+  totalPaid   Decimal  @map("total_paid") @db.Decimal(14, 2)
+  paymentDate DateTime @map("payment_date") @db.Date
+  modeCode    String   @map("mode_code") @db.VarChar(32)
+  utr         String?
+  bank        String?
+  collectedBy String?  @map("collected_by")
+  billingMonth String  @map("billing_month") @db.VarChar(7)
+  pdfUrl      String?  @map("pdf_url")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById String?  @map("created_by_id") @db.Uuid
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  deletedById String?  @map("deleted_by_id") @db.Uuid
+  rowVersion  Int      @default(1) @map("row_version")
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  member  Member  @relation(fields: [memberId], references: [id], onDelete: Restrict)
+
+  @@unique([societyId, receiptNo])
+  @@index([tenantId, societyId, billingMonth])
+  @@index([societyId, memberId])
+  @@map("receipts")
+}
+
+// ─── Ops ───
+
+model Notice {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  societyId   String    @map("society_id") @db.Uuid
+  title       String
+  body        String
+  pinned      Boolean   @default(false)
+  publishedAt DateTime  @default(now()) @map("published_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById String?   @map("created_by_id") @db.Uuid
+  updatedById String?   @map("updated_by_id") @db.Uuid
+  deletedById String?   @map("deleted_by_id") @db.Uuid
+  rowVersion  Int       @default(1) @map("row_version")
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, societyId, publishedAt])
+  @@map("notices")
+}
+
+model SocietyEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  societyId   String    @map("society_id") @db.Uuid
+  title       String
+  eventDate   DateTime  @map("event_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
+  location    String
+  description String?
+  budget      Decimal   @default(0) @db.Decimal(14, 2)
+  rsvpCount   Int       @default(0) @map("rsvp_count")
+  statusCode  String    @default("UPCOMING") @map("status_code") @db.VarChar(32)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById String?   @map("created_by_id") @db.Uuid
+  updatedById String?   @map("updated_by_id") @db.Uuid
+  deletedById String?   @map("deleted_by_id") @db.Uuid
+  rowVersion  Int       @default(1) @map("row_version")
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, societyId, eventDate])
+  @@map("society_events")
+}
+
+model Visitor {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  societyId    String    @map("society_id") @db.Uuid
+  memberId     String?   @map("member_id") @db.Uuid
+  name         String
+  flatLabel    String    @map("flat_label")
+  purpose      String
+  vehicle      String?
+  phone        String?
+  expectedTime String?   @map("expected_time")
+  statusCode   String    @default("LOGGED") @map("status_code") @db.VarChar(32)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById  String?   @map("created_by_id") @db.Uuid
+  updatedById  String?   @map("updated_by_id") @db.Uuid
+  deletedById  String?   @map("deleted_by_id") @db.Uuid
+  rowVersion   Int       @default(1) @map("row_version")
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+  member  Member? @relation(fields: [memberId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, societyId, createdAt])
+  @@index([societyId, memberId])
+  @@map("visitors")
+}
+
+model Complaint {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  societyId   String    @map("society_id") @db.Uuid
+  memberId    String    @map("member_id") @db.Uuid
+  title       String
+  description String
+  category    String?
+  statusCode  String    @default("OPEN") @map("status_code") @db.VarChar(32)
+  priorityCode String   @default("MEDIUM") @map("priority_code") @db.VarChar(32)
+  resolvedAt  DateTime? @map("resolved_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById String?   @map("created_by_id") @db.Uuid
+  updatedById String?   @map("updated_by_id") @db.Uuid
+  deletedById String?   @map("deleted_by_id") @db.Uuid
+  rowVersion  Int       @default(1) @map("row_version")
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+  member  Member  @relation(fields: [memberId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, societyId, statusCode])
+  @@index([societyId, memberId])
+  @@map("complaints")
+}
+
+model Document {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  societyId   String    @map("society_id") @db.Uuid
+  typeCode    String    @map("type_code") @db.VarChar(32)
+  fileName    String    @map("file_name")
+  mimeType    String    @map("mime_type")
+  sizeBytes   Int       @map("size_bytes")
+  storagePath String    @map("storage_path")
+  url         String
+  entityType  String?   @map("entity_type")
+  entityId    String?   @map("entity_id") @db.Uuid
+  uploadedBy  String?   @map("uploaded_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById String?   @map("created_by_id") @db.Uuid
+  updatedById String?   @map("updated_by_id") @db.Uuid
+  deletedById String?   @map("deleted_by_id") @db.Uuid
+  rowVersion  Int       @default(1) @map("row_version")
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, societyId, typeCode])
+  @@index([societyId, entityType, entityId])
+  @@map("documents")
+}
+
+model Expense {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  societyId   String    @map("society_id") @db.Uuid
+  category    String
+  vendor      String
+  amount      Decimal   @db.Decimal(14, 2)
+  expenseDate DateTime  @map("expense_date") @db.Date
+  billName    String?   @map("bill_name")
+  billUrl     String?   @map("bill_url")
+  remarks     String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById String?   @map("created_by_id") @db.Uuid
+  updatedById String?   @map("updated_by_id") @db.Uuid
+  deletedById String?   @map("deleted_by_id") @db.Uuid
+  rowVersion  Int       @default(1) @map("row_version")
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, societyId, expenseDate])
+  @@map("expenses")
+}
+
+// ─── Observability (partitioned in SQL) ───
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String?  @map("tenant_id") @db.Uuid
+  societyId  String?  @map("society_id") @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id") @db.Uuid
+  details    String?
+  metadata   Json?
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  society Society? @relation(fields: [societyId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, societyId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+model ActivityLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  societyId  String   @map("society_id") @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  activity   String
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id") @db.Uuid
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, societyId, createdAt])
+  @@map("activity_logs")
+}
+
+model Notification {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  societyId   String    @map("society_id") @db.Uuid
+  channelCode String    @map("channel_code") @db.VarChar(32)
+  recipient   String
+  subject     String?
+  body        String
+  statusCode  String    @default("QUEUED") @map("status_code") @db.VarChar(32)
+  providerRef String?   @map("provider_ref")
+  error       String?
+  metadata    Json?
+  sentAt      DateTime? @map("sent_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, societyId, channelCode, statusCode])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ─── Reporting tables (job-maintained) ───
+
+model RptSocietyDaily {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  societyId        String   @map("society_id") @db.Uuid
+  reportDate       DateTime @map("report_date") @db.Date
+  invoicesIssued   Int      @default(0) @map("invoices_issued")
+  collectedAmount  Decimal  @default(0) @map("collected_amount") @db.Decimal(14, 2)
+  outstandingAmount Decimal @default(0) @map("outstanding_amount") @db.Decimal(14, 2)
+  paymentsCount    Int      @default(0) @map("payments_count")
+  refreshedAt      DateTime @default(now()) @map("refreshed_at") @db.Timestamptz(6)
+
+  @@unique([societyId, reportDate])
+  @@index([tenantId, societyId, reportDate])
+  @@map("rpt_society_daily")
+}
+
+model RptSocietyMonthly {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  societyId         String   @map("society_id") @db.Uuid
+  billingMonth      String   @map("billing_month") @db.VarChar(7)
+  billedAmount      Decimal  @default(0) @map("billed_amount") @db.Decimal(14, 2)
+  collectedAmount   Decimal  @default(0) @map("collected_amount") @db.Decimal(14, 2)
+  outstandingAmount Decimal  @default(0) @map("outstanding_amount") @db.Decimal(14, 2)
+  collectionPct     Decimal  @default(0) @map("collection_pct") @db.Decimal(7, 4)
+  refreshedAt       DateTime @default(now()) @map("refreshed_at") @db.Timestamptz(6)
+
+  @@unique([societyId, billingMonth])
+  @@index([tenantId, societyId, billingMonth])
+  @@map("rpt_society_monthly")
+}

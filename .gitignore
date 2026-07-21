@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Env & secrets — never commit
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Builds
+dist/
+**/dist/
+build/
+.next/
+**/.next/
+out/
+coverage/
+**/coverage/
+
+# Prisma / generated
+**/generated/prisma/
+
+# Expo / React Native
+frontend/.expo/
+frontend/android/
+frontend/ios/
+*.jks
+*.keystore
+
+# Logs & OS
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Local / temp
+*.local
+.turbo/

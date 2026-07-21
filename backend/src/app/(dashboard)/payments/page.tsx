@@ -1,0 +1,682 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  CreditCard,
+  Smartphone,
+  Building2,
+  Wallet,
+  Banknote,
+  Download,
+  Receipt,
+  ExternalLink,
+  Search,
+  X,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+} from "lucide-react";
+import { useAuth } from "@/context/auth-context";
+import { useInvoices } from "@/hooks/useInvoices";
+import { receiptService, paymentService } from "@/services/payment.service";
+import { invoiceService } from "@/services/invoice.service";
+import { formatCurrency, cn } from "@/lib/utils";
+import type { Invoice, InvoiceStatus, PaymentMode } from "@/types";
+import { PageTransition } from "@/components/shared/page-transition";
+import { PageHeader } from "@/components/shared/page-header";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { AnimatedCounter } from "@/components/shared/animated-counter";
+
+const statusVariant: Record<
+  InvoiceStatus,
+  "success" | "warning" | "danger" | "info" | "secondary"
+> = {
+  Paid: "success",
+  Pending: "warning",
+  Partial: "info",
+  Overdue: "danger",
+  Cancelled: "secondary",
+};
+
+const methods: { label: PaymentMode; icon: typeof Smartphone }[] = [
+  { label: "UPI", icon: Smartphone },
+  { label: "Cash", icon: Banknote },
+  { label: "Net Banking", icon: Building2 },
+  { label: "Credit Card", icon: CreditCard },
+  { label: "Cheque", icon: Wallet },
+];
+
+const MONTHS = [
+  "01", "02", "03", "04", "05", "06",
+  "07", "08", "09", "10", "11", "12",
+];
+
+type DeskTab = "dues" | "receipts" | "all";
+
+export default function PaymentsPage() {
+  const { society } = useAuth();
+  const actor = society?.adminName ?? "Admin";
+  const { invoices, refresh } = useInvoices(society?.id);
+  const [view, setView] = useState<"monthly" | "annual">("monthly");
+  const [month, setMonth] = useState("2026-07");
+  const [year, setYear] = useState(2026);
+  const [tab, setTab] = useState<DeskTab>("dues");
+  const [query, setQuery] = useState("");
+  const [toast, setToast] = useState<string | null>(null);
+  const [receiptTick, setReceiptTick] = useState(0);
+  const [collecting, setCollecting] = useState<Invoice | null>(null);
+  const [payMode, setPayMode] = useState<PaymentMode>("UPI");
+  const [payAmount, setPayAmount] = useState("");
+  const [payError, setPayError] = useState<string | null>(null);
+
+  const allReceipts = useMemo(() => {
+    if (!society) return [];
+    void receiptTick;
+    return receiptService.list(society.id);
+  }, [society, receiptTick]);
+
+  const availableYears = useMemo(() => {
+    const values = [
+      ...invoices.map((invoice) => invoice.year),
+      ...allReceipts.map((receipt) => Number(receipt.month.slice(0, 4))),
+    ].filter(Number.isFinite);
+    return [...new Set(values)].sort((a, b) => b - a);
+  }, [invoices, allReceipts]);
+
+  const periodInvoices = useMemo(() => {
+    const active = invoices.filter((i) => i.status !== "Cancelled");
+    if (view === "monthly") return active.filter((p) => p.month === month);
+    return active.filter((p) => p.year === year);
+  }, [invoices, view, month, year]);
+
+  const dues = useMemo(
+    () =>
+      periodInvoices.filter(
+        (i) => i.outstanding > 0 && i.status !== "Paid"
+      ),
+    [periodInvoices]
+  );
+
+  const receipts = useMemo(() => {
+    if (view === "monthly")
+      return allReceipts.filter((r) => r.month === month);
+    return allReceipts.filter((r) => r.month.startsWith(String(year)));
+  }, [allReceipts, view, month, year]);
+
+  const stats = useMemo(() => {
+    if (!society) {
+      return {
+        expected: 0,
+        collected: 0,
+        outstanding: 0,
+        percent: 0,
+        pendingFlats: 0,
+        partial: 0,
+        late: 0,
+        todayCollection: 0,
+      };
+    }
+    if (view === "monthly") return invoiceService.stats(society.id, month);
+    const list = periodInvoices;
+    const expected = list.reduce((s, i) => s + i.totalAmount, 0);
+    const collected = list.reduce((s, i) => s + i.paidAmount, 0);
+    const outstanding = list.reduce((s, i) => s + i.outstanding, 0);
+    return {
+      expected,
+      collected,
+      outstanding,
+      percent: expected ? Math.round((collected / expected) * 100) : 0,
+      pendingFlats: list.filter(
+        (i) => i.status === "Pending" || i.status === "Overdue"
+      ).length,
+      partial: list.filter((i) => i.status === "Partial").length,
+      late: list.filter((i) => i.status === "Overdue" || i.lateFee > 0).length,
+      todayCollection: invoiceService.stats(society.id).todayCollection,
+    };
+  }, [society, view, month, periodInvoices]);
+
+  const filteredList = useMemo(() => {
+    const base =
+      tab === "dues"
+        ? dues
+        : tab === "all"
+          ? periodInvoices
+          : [];
+    const q = query.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter(
+      (i) =>
+        i.invoiceNo.toLowerCase().includes(q) ||
+        i.ownerName.toLowerCase().includes(q) ||
+        `${i.wing}-${i.flatNo}`.toLowerCase().includes(q)
+    );
+  }, [tab, dues, periodInvoices, query]);
+
+  const filteredReceipts = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return receipts;
+    return receipts.filter(
+      (r) =>
+        r.receiptNo.toLowerCase().includes(q) ||
+        r.ownerName.toLowerCase().includes(q) ||
+        `${r.wing}-${r.flatNo}`.toLowerCase().includes(q) ||
+        r.invoiceNo.toLowerCase().includes(q)
+    );
+  }, [receipts, query]);
+
+  const flash = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2800);
+  };
+
+  const openCollect = (inv: Invoice) => {
+    setCollecting(inv);
+    setPayAmount(String(inv.outstanding));
+    setPayMode("UPI");
+    setPayError(null);
+  };
+
+  const submitCollect = () => {
+    if (!collecting) return;
+    const amount = Number(payAmount);
+    if (!amount || amount <= 0) {
+      setPayError("Enter a valid amount");
+      return;
+    }
+    if (amount > collecting.outstanding) {
+      setPayError("Amount cannot exceed outstanding");
+      return;
+    }
+    try {
+      const result = paymentService.simulatePay(
+        collecting.invoiceNo,
+        amount,
+        payMode,
+        actor
+      );
+      refresh();
+      setReceiptTick((t) => t + 1);
+      setCollecting(null);
+      flash(
+        `Recorded ${formatCurrency(result.receipt.amount)} · ${result.receipt.receiptNo}`
+      );
+      setTab("receipts");
+    } catch (e) {
+      setPayError(e instanceof Error ? e.message : "Payment failed");
+    }
+  };
+
+  const exportCsv = () => {
+    const rows = [
+      ["Invoice", "Flat", "Owner", "Total", "Paid", "Outstanding", "Status", "Due"],
+      ...periodInvoices.map((p) => [
+        p.invoiceNo,
+        `${p.wing}-${p.flatNo}`,
+        p.ownerName,
+        String(p.totalAmount),
+        String(p.paidAmount),
+        String(p.outstanding),
+        p.status,
+        p.dueDate,
+      ]),
+    ];
+    const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `collection-${view === "monthly" ? month : year}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (!society) return null;
+
+  return (
+    <PageTransition>
+      <PageHeader
+        eyebrow={society.name}
+        title="Payments & collections"
+        description="Review dues, search transactions, record payments and open invoices or receipts by period"
+        actions={
+          <>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/invoices">Go to Invoices</Link>
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportCsv}>
+              <Download className="h-4 w-4" /> Export
+            </Button>
+          </>
+        }
+      />
+
+      {toast && (
+        <p className="rounded-xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+          {toast}
+        </p>
+      )}
+
+      {/* Period + progress */}
+      <Card className="overflow-hidden border-0 bg-[#131417] text-white">
+        <CardContent className="p-5 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-white/60">
+                {view === "monthly" ? formatMonthLabel(month) : `${year}`}{" "}
+                collection
+              </p>
+              <p className="mt-1 text-3xl font-bold tabular-nums">
+                {stats.percent}%
+              </p>
+              <p className="mt-1 text-sm text-white/60">
+                {formatCurrency(stats.collected)} of{" "}
+                {formatCurrency(stats.expected)} expected
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setView("monthly")}
+                className={cn(
+                  "rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
+                  view === "monthly"
+                    ? "bg-[#D6F252] text-[#131417]"
+                    : "bg-white/15 text-white hover:bg-white/25"
+                )}
+              >
+                Monthly
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("annual")}
+                className={cn(
+                  "rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
+                  view === "annual"
+                    ? "bg-[#D6F252] text-[#131417]"
+                    : "bg-white/15 text-white hover:bg-white/25"
+                )}
+              >
+                Annual
+              </button>
+              <select
+                value={year}
+                onChange={(e) => {
+                  const nextYear = Number(e.target.value);
+                  setYear(nextYear);
+                  setMonth(`${nextYear}-${month.slice(5, 7)}`);
+                }}
+                className="h-9 rounded-full border border-white/15 bg-white/10 px-3 text-sm text-white outline-none focus:border-[#D6F252]"
+                aria-label="Filter by year"
+              >
+                {availableYears.map((availableYear) => (
+                  <option
+                    key={availableYear}
+                    value={availableYear}
+                    className="text-slate-900"
+                  >
+                    {availableYear}
+                  </option>
+                ))}
+              </select>
+              {view === "monthly" ? (
+                <select
+                  value={month}
+                  onChange={(e) => setMonth(e.target.value)}
+                  className="h-9 rounded-full border border-white/15 bg-white/10 px-3 text-sm text-white outline-none focus:border-[#D6F252]"
+                  aria-label="Filter by month"
+                >
+                  {MONTHS.map((m) => (
+                    <option key={m} value={`${year}-${m}`} className="text-slate-900">
+                      {formatMonthLabel(`${year}-${m}`)}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </div>
+          </div>
+          <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-white/20">
+            <div
+              className="h-full rounded-full bg-[#D6F252] transition-[width] duration-300 ease-out"
+              style={{ width: `${Math.min(100, stats.percent)}%` }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          {
+            label: "Outstanding",
+            value: stats.outstanding,
+            sub: `${stats.pendingFlats} flats pending`,
+            icon: AlertCircle,
+            accent: "text-red-600 bg-red-50 dark:bg-red-950/30",
+          },
+          {
+            label: "Collected",
+            value: stats.collected,
+            sub: "This period",
+            icon: CheckCircle2,
+            accent: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30",
+          },
+          {
+            label: "Today",
+            value: stats.todayCollection,
+            sub: "Recorded today",
+            icon: Clock,
+            accent: "text-[#66751f] bg-[#f3fad5] dark:bg-[#2b2e1b]",
+          },
+          {
+            label: "Attention",
+            value: stats.late + stats.partial,
+            sub: `${stats.late} late · ${stats.partial} partial`,
+            icon: AlertCircle,
+            accent: "text-orange-600 bg-orange-50 dark:bg-orange-950/30",
+            isCount: true,
+          },
+        ].map((item) => (
+          <Card key={item.label}>
+            <CardContent className="flex gap-3 p-4 sm:p-5">
+              <div
+                className={cn(
+                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+                  item.accent
+                )}
+              >
+                <item.icon className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">{item.label}</p>
+                <p className="truncate text-lg font-bold sm:text-xl">
+                  {"isCount" in item && item.isCount ? (
+                    item.value
+                  ) : (
+                    <AnimatedCounter
+                      value={item.value as number}
+                      format={(n) => formatCurrency(n)}
+                    />
+                  )}
+                </p>
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {item.sub}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Desk tabs */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-1 rounded-2xl bg-secondary/60 p-1">
+          {(
+            [
+              { id: "dues" as const, label: `Dues (${dues.length})` },
+              { id: "receipts" as const, label: `Receipts (${receipts.length})` },
+              { id: "all" as const, label: `All invoices (${periodInvoices.length})` },
+            ] as const
+          ).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={cn(
+                "rounded-xl px-3.5 py-2 text-sm font-medium transition-colors",
+                tab === t.id
+                  ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            fieldSize="filter"
+            className="pl-9"
+            placeholder="Search flat, owner, invoice…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {tab !== "receipts" && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">
+              {tab === "dues" ? "Who still owes" : "Period invoices"}
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {tab === "dues"
+                ? "Select a flat to record cash / UPI / bank payment and generate a receipt."
+                : "Full list for this period. Use Dues tab to collect."}
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {filteredList.length === 0 && (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                {tab === "dues"
+                  ? "No outstanding dues for this period."
+                  : "No invoices. Generate them from Invoices."}
+              </p>
+            )}
+            {filteredList.map((p) => (
+              <div
+                key={p.id}
+                className="flex flex-col gap-3 rounded-2xl border border-border/50 bg-card p-3.5 transition-colors hover:border-[#9caf30]/50 hover:bg-secondary/30 sm:flex-row sm:items-center"
+              >
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#131417] text-xs font-bold text-[#D6F252]">
+                    {p.wing}-{p.flatNo}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold">{p.ownerName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {p.invoiceNo} · Due {p.dueDate}
+                      {p.lateFee > 0 ? ` · Late ₹${p.lateFee}` : ""}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  <div className="mr-1 text-right">
+                    <p className="text-sm font-bold">
+                      {formatCurrency(p.outstanding > 0 ? p.outstanding : p.totalAmount)}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {p.outstanding > 0
+                        ? `of ${formatCurrency(p.totalAmount)}`
+                        : "Fully paid"}
+                    </p>
+                  </div>
+                  <Badge variant={statusVariant[p.status]}>{p.status}</Badge>
+                  <Link
+                    href={`/invoice/${p.invoiceNo}`}
+                    target="_blank"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"
+                    title="Public invoice"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </Link>
+                  {p.outstanding > 0 ? (
+                    <Button size="sm" onClick={() => openCollect(p)}>
+                      Record payment
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setTab("receipts")}
+                    >
+                      View receipts
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === "receipts" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              Receipt ledger ({filteredReceipts.length})
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Every recorded collection for this period
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {!filteredReceipts.length && (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                No receipts yet. Record a payment from the Dues tab.
+              </p>
+            )}
+            {filteredReceipts.map((r) => (
+              <div
+                key={r.id}
+                className="flex flex-wrap items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-3.5 dark:border-emerald-900/40 dark:bg-emerald-950/20"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50">
+                  <Receipt className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-emerald-800 dark:text-emerald-300">
+                    {r.receiptNo}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {r.wing}-{r.flatNo} · {r.ownerName} · {r.paymentDate} ·{" "}
+                    {r.paymentMode} · {r.invoiceNo}
+                  </p>
+                </div>
+                <p className="font-bold">{formatCurrency(r.amount)}</p>
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/receipt/${r.receiptNo}`} target="_blank">
+                    Open
+                  </Link>
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Record payment modal */}
+      {collecting && (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
+          <Card className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl sm:rounded-2xl">
+            <CardHeader className="flex-row items-start justify-between space-y-0">
+              <div>
+                <CardTitle>Record payment</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {collecting.wing}-{collecting.flatNo} · {collecting.ownerName}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {collecting.invoiceNo} · Outstanding{" "}
+                  <strong className="text-red-600">
+                    {formatCurrency(collecting.outstanding)}
+                  </strong>
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setCollecting(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                  Amount received
+                </label>
+                <Input
+                  type="number"
+                  value={payAmount}
+                  onChange={(e) => setPayAmount(e.target.value)}
+                />
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setPayAmount(String(collecting.outstanding))
+                    }
+                  >
+                    Full due
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setPayAmount(
+                        String(Math.round(collecting.outstanding / 2))
+                      )
+                    }
+                  >
+                    Half
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                  Payment mode
+                </label>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {methods.map((m) => (
+                    <button
+                      key={m.label}
+                      type="button"
+                      onClick={() => setPayMode(m.label)}
+                      className={cn(
+                        "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition-all",
+                        payMode === m.label
+                          ? "border-[#9caf30] bg-[#f3fad5] text-[#3f4814] dark:bg-[#2b2e1b] dark:text-[#D6F252]"
+                          : "border-border hover:bg-secondary/50"
+                      )}
+                    >
+                      <m.icon className="h-4 w-4 shrink-0" />
+                      <span className="truncate font-medium">{m.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {payError && (
+                <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">
+                  {payError}
+                </p>
+              )}
+              <Button className="w-full" size="default" onClick={submitCollect}>
+                Confirm & generate receipt
+              </Button>
+              <p className="text-center text-[11px] text-muted-foreground">
+                Mock collection — updates invoice, receipt, dashboard & audit
+                log
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </PageTransition>
+  );
+}
+
+function formatMonthLabel(ym: string) {
+  const [y, m] = ym.split("-");
+  const names = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+  return `${names[Number(m) - 1]} ${y}`;
+}
