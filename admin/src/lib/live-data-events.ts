@@ -3,6 +3,7 @@
 export type LiveDataScope =
   | "members"
   | "invoices"
+  | "receipts"
   | "visitors"
   | "settings"
   | "events"
