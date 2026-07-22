@@ -157,12 +157,10 @@ export const invoiceService = {
 
   async generateMonthly(societyId: string, month: string): Promise<Invoice[]> {
     try {
-      const res = await invoicesApi.generateMonthly(month, societyId);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const created = (res.invoices as any[]).map((raw) => mapApiInvoice(raw, societyId));
-      created.forEach(upsert);
+      await invoicesApi.generateMonthly(month, societyId);
+      await refreshList(societyId);
       notifyDataUpdated("invoices");
-      return created;
+      return cache.filter((i) => i.societyId === societyId && i.month === month);
     } catch (e) {
       console.error("Failed to generate invoices:", apiErrorMessage(e));
       throw new Error(apiErrorMessage(e));

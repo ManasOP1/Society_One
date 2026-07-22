@@ -21,7 +21,7 @@ import { useAuth } from "@/context/auth-context";
 import { useInvoices } from "@/hooks/useInvoices";
 import { receiptService, paymentService } from "@/services/payment.service";
 import { invoiceService } from "@/services/invoice.service";
-import { formatCurrency, cn } from "@/lib/utils";
+import { formatCurrency, cn, formatDate } from "@/lib/utils";
 import type { Invoice, InvoiceStatus, PaymentMode } from "@/types";
 import { PageTransition } from "@/components/shared/page-transition";
 import { PageHeader } from "@/components/shared/page-header";
@@ -180,7 +180,7 @@ export default function PaymentsPage() {
     setPayError(null);
   };
 
-  const submitCollect = () => {
+  const submitCollect = async () => {
     if (!collecting) return;
     const amount = Number(payAmount);
     if (!amount || amount <= 0) {
@@ -192,13 +192,13 @@ export default function PaymentsPage() {
       return;
     }
     try {
-      const result = paymentService.simulatePay(
+      const result = await paymentService.simulatePay(
         collecting.invoiceNo,
         amount,
         payMode,
         actor
       );
-      refresh();
+      await refresh();
       setReceiptTick((t) => t + 1);
       setCollecting(null);
       flash(
@@ -261,31 +261,31 @@ export default function PaymentsPage() {
       )}
 
       {/* Period + progress */}
-      <Card className="overflow-hidden border-0 bg-[#131417] text-white">
-        <CardContent className="p-5 sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <Card className="overflow-hidden border border-slate-200 bg-white shadow-[var(--shadow-card)]">
+        <CardContent className="p-6 sm:p-7">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-white/60">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {view === "monthly" ? formatMonthLabel(month) : `${year}`}{" "}
                 collection
               </p>
-              <p className="mt-1 text-3xl font-bold tabular-nums">
+              <p className="mt-2 text-4xl font-bold tabular-nums tracking-tight text-primary">
                 {stats.percent}%
               </p>
-              <p className="mt-1 text-sm text-white/60">
+              <p className="mt-1.5 text-sm text-muted-foreground">
                 {formatCurrency(stats.collected)} of{" "}
                 {formatCurrency(stats.expected)} expected
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2.5">
               <button
                 type="button"
                 onClick={() => setView("monthly")}
                 className={cn(
-                  "rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
+                  "rounded-full px-4 py-2 text-sm font-semibold transition-colors duration-150",
                   view === "monthly"
-                    ? "bg-[#D6F252] text-[#131417]"
-                    : "bg-white/15 text-white hover:bg-white/25"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                 )}
               >
                 Monthly
@@ -294,10 +294,10 @@ export default function PaymentsPage() {
                 type="button"
                 onClick={() => setView("annual")}
                 className={cn(
-                  "rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
+                  "rounded-full px-4 py-2 text-sm font-semibold transition-colors duration-150",
                   view === "annual"
-                    ? "bg-[#D6F252] text-[#131417]"
-                    : "bg-white/15 text-white hover:bg-white/25"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                 )}
               >
                 Annual
@@ -309,15 +309,11 @@ export default function PaymentsPage() {
                   setYear(nextYear);
                   setMonth(`${nextYear}-${month.slice(5, 7)}`);
                 }}
-                className="h-9 rounded-full border border-white/15 bg-white/10 px-3 text-sm text-white outline-none focus:border-[#D6F252]"
+                className="h-10 rounded-full border border-input bg-background px-3.5 text-sm font-medium text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
                 aria-label="Filter by year"
               >
                 {availableYears.map((availableYear) => (
-                  <option
-                    key={availableYear}
-                    value={availableYear}
-                    className="text-slate-900"
-                  >
+                  <option key={availableYear} value={availableYear}>
                     {availableYear}
                   </option>
                 ))}
@@ -326,11 +322,11 @@ export default function PaymentsPage() {
                 <select
                   value={month}
                   onChange={(e) => setMonth(e.target.value)}
-                  className="h-9 rounded-full border border-white/15 bg-white/10 px-3 text-sm text-white outline-none focus:border-[#D6F252]"
+                  className="h-10 rounded-full border border-input bg-background px-3.5 text-sm font-medium text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
                   aria-label="Filter by month"
                 >
                   {MONTHS.map((m) => (
-                    <option key={m} value={`${year}-${m}`} className="text-slate-900">
+                    <option key={m} value={`${year}-${m}`}>
                       {formatMonthLabel(`${year}-${m}`)}
                     </option>
                   ))}
@@ -338,16 +334,16 @@ export default function PaymentsPage() {
               ) : null}
             </div>
           </div>
-          <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-white/20">
+          <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full rounded-full bg-[#D6F252] transition-[width] duration-300 ease-out"
+              className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
               style={{ width: `${Math.min(100, stats.percent)}%` }}
             />
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[
           {
             label: "Outstanding",
@@ -368,7 +364,7 @@ export default function PaymentsPage() {
             value: stats.todayCollection,
             sub: "Recorded today",
             icon: Clock,
-            accent: "text-[#66751f] bg-[#f3fad5] dark:bg-[#2b2e1b]",
+            accent: "text-primary bg-indigo-50 dark:bg-indigo-950/40",
           },
           {
             label: "Attention",
@@ -380,18 +376,18 @@ export default function PaymentsPage() {
           },
         ].map((item) => (
           <Card key={item.label}>
-            <CardContent className="flex gap-3 p-4 sm:p-5">
+            <CardContent className="flex gap-3.5 p-4 sm:p-5">
               <div
                 className={cn(
-                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+                  "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
                   item.accent
                 )}
               >
                 <item.icon className="h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">{item.label}</p>
-                <p className="truncate text-lg font-bold sm:text-xl">
+                <p className="text-caption font-medium text-muted-foreground">{item.label}</p>
+                <p className="mt-1 truncate text-lg font-bold sm:text-xl">
                   {"isCount" in item && item.isCount ? (
                     item.value
                   ) : (
@@ -401,7 +397,7 @@ export default function PaymentsPage() {
                     />
                   )}
                 </p>
-                <p className="truncate text-[11px] text-muted-foreground">
+                <p className="mt-0.5 truncate text-caption text-muted-foreground">
                   {item.sub}
                 </p>
               </div>
@@ -411,8 +407,8 @@ export default function PaymentsPage() {
       </div>
 
       {/* Desk tabs */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-1 rounded-2xl bg-secondary/60 p-1">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-1 rounded-2xl bg-secondary/60 p-1.5">
           {(
             [
               { id: "dues" as const, label: `Dues (${dues.length})` },
@@ -425,7 +421,7 @@ export default function PaymentsPage() {
               type="button"
               onClick={() => setTab(t.id)}
               className={cn(
-                "rounded-xl px-3.5 py-2 text-sm font-medium transition-colors",
+                "rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors duration-150",
                 tab === t.id
                   ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white"
                   : "text-muted-foreground hover:text-foreground"
@@ -435,7 +431,7 @@ export default function PaymentsPage() {
             </button>
           ))}
         </div>
-        <div className="relative w-full sm:w-64">
+        <div className="relative w-full sm:w-72">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             fieldSize="filter"
@@ -459,9 +455,9 @@ export default function PaymentsPage() {
                 : "Full list for this period. Use Dues tab to collect."}
             </p>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-3">
             {filteredList.length === 0 && (
-              <p className="py-10 text-center text-sm text-muted-foreground">
+              <p className="py-12 text-center text-sm text-muted-foreground">
                 {tab === "dues"
                   ? "No outstanding dues for this period."
                   : "No invoices. Generate them from Invoices."}
@@ -470,26 +466,26 @@ export default function PaymentsPage() {
             {filteredList.map((p) => (
               <div
                 key={p.id}
-                className="flex flex-col gap-3 rounded-2xl border border-border/50 bg-card p-3.5 transition-colors hover:border-[#9caf30]/50 hover:bg-secondary/30 sm:flex-row sm:items-center"
+                className="flex flex-col gap-4 rounded-2xl border border-border/50 bg-card p-4 transition-colors duration-150 hover:border-primary/30 hover:bg-secondary/20 sm:flex-row sm:items-center"
               >
-                <div className="flex min-w-0 flex-1 items-start gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#131417] text-xs font-bold text-[#D6F252]">
+                <div className="flex min-w-0 flex-1 items-start gap-3.5">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-xs font-bold text-primary dark:bg-primary/20">
                     {p.wing}-{p.flatNo}
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate font-semibold">{p.ownerName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {p.invoiceNo} · Due {p.dueDate}
+                    <p className="truncate text-[0.9375rem] font-semibold">{p.ownerName}</p>
+                    <p className="mt-0.5 text-caption text-muted-foreground">
+                      {p.invoiceNo} · Due {formatDate(p.dueDate)}
                       {p.lateFee > 0 ? ` · Late ₹${p.lateFee}` : ""}
                     </p>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <div className="flex flex-wrap items-center gap-2.5 sm:justify-end">
                   <div className="mr-1 text-right">
-                    <p className="text-sm font-bold">
+                    <p className="text-[0.9375rem] font-bold">
                       {formatCurrency(p.outstanding > 0 ? p.outstanding : p.totalAmount)}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-caption text-muted-foreground">
                       {p.outstanding > 0
                         ? `of ${formatCurrency(p.totalAmount)}`
                         : "Fully paid"}
@@ -534,16 +530,16 @@ export default function PaymentsPage() {
               Every recorded collection for this period
             </p>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-3">
             {!filteredReceipts.length && (
-              <p className="py-10 text-center text-sm text-muted-foreground">
+              <p className="py-12 text-center text-sm text-muted-foreground">
                 No receipts yet. Record a payment from the Dues tab.
               </p>
             )}
             {filteredReceipts.map((r) => (
               <div
                 key={r.id}
-                className="flex flex-wrap items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-3.5 dark:border-emerald-900/40 dark:bg-emerald-950/20"
+                className="flex flex-wrap items-center gap-3.5 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20"
               >
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50">
                   <Receipt className="h-4 w-4" />
@@ -557,7 +553,7 @@ export default function PaymentsPage() {
                     {r.paymentMode} · {r.invoiceNo}
                   </p>
                 </div>
-                <p className="font-bold">{formatCurrency(r.amount)}</p>
+                <p className="text-base font-bold">{formatCurrency(r.amount)}</p>
                 <Button variant="outline" size="sm" asChild>
                   <Link href={`/receipt/${r.receiptNo}`} target="_blank">
                     Open
@@ -640,9 +636,9 @@ export default function PaymentsPage() {
                       type="button"
                       onClick={() => setPayMode(m.label)}
                       className={cn(
-                        "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition-all",
+                        "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition-all duration-150",
                         payMode === m.label
-                          ? "border-[#9caf30] bg-[#f3fad5] text-[#3f4814] dark:bg-[#2b2e1b] dark:text-[#D6F252]"
+                          ? "border-primary bg-primary/10 text-primary dark:bg-primary/20"
                           : "border-border hover:bg-secondary/50"
                       )}
                     >
@@ -660,7 +656,7 @@ export default function PaymentsPage() {
               <Button className="w-full" size="default" onClick={submitCollect}>
                 Confirm & generate receipt
               </Button>
-              <p className="text-center text-[11px] text-muted-foreground">
+              <p className="text-center text-caption text-muted-foreground">
                 Mock collection — updates invoice, receipt, dashboard & audit
                 log
               </p>

@@ -1,0 +1,5 @@
+-- Baseline migration.
+-- The production Supabase database already contains the full SocietyOne schema.
+-- Mark this as applied with:
+--   npx prisma migrate resolve --applied 20240101000000_baseline
+-- Do NOT run this SQL on an existing database.

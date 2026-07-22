@@ -11,7 +11,7 @@ export function PageTransition({
   className?: string;
 }) {
   return (
-    <div className={cn("page-enter w-full min-w-0 space-y-6", className)}>
+    <div className={cn("page-enter w-full min-w-0 space-y-7", className)}>
       {children}
     </div>
   );

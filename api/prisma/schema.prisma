@@ -183,6 +183,7 @@ model User {
   roles    UserRoleAssignment[]
   refreshTokens RefreshToken[]
   passwordResetTokens PasswordResetToken[]
+  pushTokens DevicePushToken[]
 
   @@index([tenantId, societyId])
   @@index([societyId, isActive])
@@ -829,6 +830,22 @@ model Notification {
   @@index([tenantId, societyId, channelCode, statusCode])
   @@index([createdAt])
   @@map("notifications")
+}
+
+model DevicePushToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  societyId String?  @map("society_id") @db.Uuid
+  expoToken String   @map("expo_token")
+  platform  String?  @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, expoToken])
+  @@index([societyId])
+  @@map("device_push_tokens")
 }
 
 // ─── Reporting tables (job-maintained) ───

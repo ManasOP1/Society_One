@@ -4,6 +4,7 @@
 #
 # CRITICAL: Free plan sleeps after ~15 min idle → 30–50s cold starts on login.
 # Use starter (or higher) for production so admin + mobile stay responsive.
+# Optional free-tier workaround: ping GET /api/v1/health every 10–14 min (UptimeRobot).
 
 services:
   - type: web

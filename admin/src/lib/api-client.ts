@@ -157,6 +157,8 @@ interface ApiFetchOptions extends RequestInit {
   auth?: boolean;
 }
 
+const API_TIMEOUT_MS = 20_000;
+
 export async function apiFetch<T>(path: string, init: ApiFetchOptions = {}): Promise<T> {
   const { auth = true, headers, ...rest } = init;
 
@@ -168,7 +170,11 @@ export async function apiFetch<T>(path: string, init: ApiFetchOptions = {}): Pro
     if (auth && token) finalHeaders.Authorization = `Bearer ${token}`;
     const url = `${API_BASE_URL}${path}`;
     try {
-      return await fetch(url, { ...rest, headers: finalHeaders });
+      return await fetch(url, {
+        ...rest,
+        headers: finalHeaders,
+        signal: AbortSignal.timeout(API_TIMEOUT_MS),
+      });
     } catch (error) {
       if (error instanceof TypeError) {
         throw new ApiError(0, apiUnreachableMessage());
@@ -256,7 +262,8 @@ export const authApi = {
 
 export const membersApi = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  list: (societyId?: string) => apiFetch<any[]>(`/members${qs({ societyId })}`),
+  list: (societyId?: string) =>
+    apiFetch<any[]>(`/members${qs({ societyId, limit: "200" })}`),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   create: (input: Record<string, unknown>, societyId?: string) =>
     apiFetch<any>(`/members${qs({ societyId })}`, { method: "POST", body: JSON.stringify(input) }),
@@ -293,7 +300,7 @@ export const settingsApi = {
 export const invoicesApi = {
   list: (params: { societyId?: string; status?: string; month?: string } = {}) =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    apiFetch<any[]>(`/invoices${qs(params)}`),
+    apiFetch<any[]>(`/invoices${qs({ ...params, limit: "200" })}`),
   byNo: (invoiceNo: string, societyId?: string) =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     apiFetch<any>(`/invoices/${encodeURIComponent(invoiceNo)}${qs({ societyId })}`),
@@ -312,10 +319,16 @@ export const invoicesApi = {
 export const receiptsApi = {
   list: (params: { societyId?: string; month?: string } = {}) =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    apiFetch<any[]>(`/receipts${qs(params)}`),
+    apiFetch<any[]>(`/receipts${qs({ ...params, limit: "200" })}`),
   byNo: (receiptNo: string, societyId?: string) =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     apiFetch<any>(`/receipts/${encodeURIComponent(receiptNo)}${qs({ societyId })}`),
+};
+
+export const paymentsApi = {
+  manual: (input: { invoiceNo: string; amount: number; mode: string }) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    apiFetch<any>("/payments/manual", { method: "POST", body: JSON.stringify(input) }),
 };
 
 export const communityApi = {

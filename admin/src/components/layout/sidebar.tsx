@@ -238,7 +238,7 @@ export function MainShell({ children }: { children: React.ReactNode }) {
         paddingTop: isMobile ? 56 : 0,
       }}
     >
-      <main className="mx-auto w-full min-w-0 max-w-[1400px] overflow-x-hidden px-3 pb-28 pt-4 sm:px-5 sm:pt-6 lg:px-8">
+      <main className="mx-auto w-full min-w-0 max-w-[1400px] overflow-x-hidden px-4 pb-28 pt-5 sm:px-6 sm:pt-7 lg:px-10">
         {children}
       </main>
     </div>

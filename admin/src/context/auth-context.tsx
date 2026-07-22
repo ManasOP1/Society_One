@@ -21,7 +21,7 @@ import {
   notifyDataUpdated,
   type ApiUser,
 } from "@/lib/api-client";
-import { LIVE_SYNC_DEBOUNCE_MS, LIVE_SYNC_MS } from "@/constants/live-sync";
+import { LIVE_SYNC_DEBOUNCE_MS } from "@/constants/live-sync";
 import { subscribeLiveData } from "@/lib/live-data-events";
 import { societyService, SUPER_ADMIN } from "@/services/society.service";
 import { settingsService } from "@/services/settings.service";
@@ -188,9 +188,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       membersLoadedFor.current = u.societyId;
+      // Society + settings first (dashboard); members load in background.
+      void loadMembers(u.societyId);
       await Promise.all([
         loadSociety(u),
-        loadMembers(u.societyId),
         settingsService.fetch(u.societyId, { silent: true }).catch(() => undefined),
       ]);
     },
@@ -257,7 +258,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, isLoading, loadSocietyData, refreshSocieties, societies.length]);
 
-  // Poll member list while the admin console is open (settings/invoices use their own hooks).
+  // Refresh members on focus / cross-screen events only (no background polling).
   useEffect(() => {
     if (!user?.societyId || user.role === "SUPER_ADMIN") return;
 
@@ -273,12 +274,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       debounceTimer = setTimeout(tick, LIVE_SYNC_DEBOUNCE_MS);
     };
 
-    const id = window.setInterval(tick, LIVE_SYNC_MS);
     const unsub = subscribeLiveData("members", scheduleDebounced);
     window.addEventListener("focus", scheduleDebounced);
 
     return () => {
-      window.clearInterval(id);
       if (debounceTimer) clearTimeout(debounceTimer);
       unsub();
       window.removeEventListener("focus", scheduleDebounced);

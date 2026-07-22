@@ -23,7 +23,7 @@ import { whatsappService } from "@/services/whatsapp.service";
 import { paymentService } from "@/services/payment.service";
 import { invoiceService } from "@/services/invoice.service";
 import { printElementById } from "@/utils/print";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Invoice, InvoiceStatus } from "@/types";
 import { PageTransition } from "@/components/shared/page-transition";
 import { PageHeader } from "@/components/shared/page-header";
@@ -172,7 +172,7 @@ export default function InvoicesPage() {
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[
           { label: "Expected", value: formatCurrency(monthStats.expected) },
           { label: "Collected", value: formatCurrency(monthStats.collected) },
@@ -188,8 +188,8 @@ export default function InvoicesPage() {
         ].map((s) => (
           <Card key={s.label}>
             <CardContent className="p-4">
-              <p className="text-[11px] text-muted-foreground">{s.label}</p>
-              <p className="mt-1 truncate text-sm font-bold sm:text-base">
+              <p className="text-caption text-muted-foreground">{s.label}</p>
+              <p className="mt-1.5 truncate text-base font-bold sm:text-lg">
                 {s.value}
               </p>
             </CardContent>
@@ -256,7 +256,7 @@ export default function InvoicesPage() {
                   <td className="px-2 py-3">{inv.ownerName}</td>
                   <td className="px-2 py-3">{formatCurrency(inv.totalAmount)}</td>
                   <td className="px-2 py-3">{formatCurrency(inv.paidAmount)}</td>
-                  <td className="px-2 py-3">{inv.dueDate}</td>
+                  <td className="px-2 py-3">{formatDate(inv.dueDate)}</td>
                   <td className="px-2 py-3">
                     <Badge variant={statusVariant[inv.status]}>{inv.status}</Badge>
                   </td>
@@ -293,12 +293,19 @@ export default function InvoicesPage() {
                         variant="ghost"
                         size="icon-sm"
                         title="Mark Paid"
-                        onClick={() => {
-                          if (inv.outstanding > 0) {
-                            paymentService.markFullyPaid(inv.invoiceNo, actor);
-                            refresh();
-                            flash(`Marked paid ${inv.invoiceNo}`);
-                          } else setStatus(inv.invoiceNo, "Paid", actor);
+                        onClick={async () => {
+                          try {
+                            if (inv.outstanding > 0) {
+                              await paymentService.markFullyPaid(inv.invoiceNo, actor, "Cash");
+                              await refresh();
+                              flash(`Marked paid ${inv.invoiceNo}`);
+                            } else {
+                              setStatus(inv.invoiceNo, "Paid", actor);
+                              flash(`Marked paid ${inv.invoiceNo}`);
+                            }
+                          } catch (e) {
+                            flash(e instanceof Error ? e.message : "Payment failed");
+                          }
                         }}
                       >
                         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />

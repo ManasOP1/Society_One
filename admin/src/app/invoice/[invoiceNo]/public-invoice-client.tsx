@@ -35,7 +35,7 @@ export default function PublicInvoicePage() {
     setError(null);
     try {
       await new Promise((r) => setTimeout(r, 800));
-      const result = paymentService.markFullyPaid(
+      const result = await paymentService.markFullyPaid(
         invoice.invoiceNo,
         "Online (Mock)",
         "UPI"

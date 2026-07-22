@@ -42,6 +42,7 @@ export class VisitorsService {
     return this.prisma.visitor.findMany({
       where,
       orderBy: { createdAt: 'desc' },
+      take: 50,
       include: {
         member: { select: { id: true, ownerName: true } },
       },

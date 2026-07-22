@@ -17,22 +17,23 @@ import { LIVE_SYNC_MS } from '@/constants/live-sync';
 import { AuthProvider, useAuth } from '@/context/auth';
 import { useAppFocusManager } from '@/hooks/use-app-focus-manager';
 import { useLiveSessionSync } from '@/hooks/use-live-session-sync';
+import { usePushNotifications } from '@/hooks/use-push-notifications';
 
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      /** Fresh for 2 minutes — avoid hammering a cold Render free tier. */
+      /** Fresh for 5 min — fewer round-trips on free Render/Supabase. */
       staleTime: LIVE_SYNC_MS,
-      /** No global polling; refetch on reconnect / foreground invalidation only. */
+      gcTime: LIVE_SYNC_MS * 2,
       refetchInterval: false,
       refetchIntervalInBackground: false,
       refetchOnMount: false,
       refetchOnReconnect: true,
       refetchOnWindowFocus: false,
       retry: 2,
-      retryDelay: (attempt) => Math.min(1_000 * 2 ** attempt, 8_000),
+      retryDelay: (attempt) => Math.min(1_000 * 2 ** attempt, 5_000),
       /** Keep current UI visible while refetching — no flash to skeleton. */
       placeholderData: keepPreviousData,
     },
@@ -40,8 +41,10 @@ const queryClient = new QueryClient({
 });
 
 function LiveSyncLayer() {
+  const { isAuthenticated } = useAuth();
   useAppFocusManager();
   useLiveSessionSync();
+  usePushNotifications(isAuthenticated);
   return null;
 }
 

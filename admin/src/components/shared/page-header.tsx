@@ -23,15 +23,17 @@ export function PageHeader({
         className
       )}
     >
-      <div className="min-w-0 space-y-1">
+      <div className="min-w-0 space-y-1.5">
         {eyebrow ? (
-          <p className="truncate text-sm font-medium text-primary">{eyebrow}</p>
+          <p className="truncate text-sm font-semibold text-primary">{eyebrow}</p>
         ) : null}
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+        <h1 className="text-[1.625rem] font-bold leading-tight tracking-tight text-foreground sm:text-[1.75rem]">
           {title}
         </h1>
         {description ? (
-          <p className="max-w-2xl text-sm text-muted-foreground">{description}</p>
+          <p className="max-w-2xl text-[0.9375rem] leading-relaxed text-muted-foreground">
+            {description}
+          </p>
         ) : null}
       </div>
       {actions ? (

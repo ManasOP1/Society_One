@@ -12,13 +12,13 @@ import { Card } from '@/components/ui/card';
 import { Screen } from '@/components/ui/screen';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ui/states';
-import { Radius, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { useInvoice, useSocietySettings } from '@/hooks/queries';
 import { useTheme } from '@/hooks/use-theme';
 import { invoiceDocumentHtml } from '@/utils/invoice-document-html';
 import { formatINR } from '@/utils/format';
-import { sharePdf } from '@/utils/pdf';
+import { downloadPdf, sharePdf } from '@/utils/pdf';
 
 export default function InvoiceDetailScreen() {
   const { invoiceNo } = useLocalSearchParams<{ invoiceNo: string }>();
@@ -29,7 +29,8 @@ export default function InvoiceDetailScreen() {
   const invoice = useInvoice(invoiceNo ?? '');
   const settings = useSocietySettings();
   const [sharing, setSharing] = useState(false);
-  const [shareError, setShareError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const html = useMemo(() => {
     if (!invoice.data || !settings.data) return '';
@@ -37,24 +38,37 @@ export default function InvoiceDetailScreen() {
   }, [invoice.data, settings.data]);
 
   async function handleShare() {
-    if (!html) return;
+    if (!html || !invoice.data) return;
     setSharing(true);
-    setShareError(null);
+    setActionError(null);
     try {
-      await sharePdf(html, `${invoice.data!.invoiceNo}.pdf`);
+      await sharePdf(html, `${invoice.data.invoiceNo}.pdf`);
     } catch (error) {
-      setShareError(apiErrorMessage(error));
+      setActionError(apiErrorMessage(error));
     } finally {
       setSharing(false);
+    }
+  }
+
+  async function handleDownload() {
+    if (!html || !invoice.data) return;
+    setDownloading(true);
+    setActionError(null);
+    try {
+      await downloadPdf(html, `${invoice.data.invoiceNo}.pdf`);
+    } catch (error) {
+      setActionError(apiErrorMessage(error));
+    } finally {
+      setDownloading(false);
     }
   }
 
   if (invoice.isPending || settings.isPending) {
     return (
       <Screen>
-        <Skeleton height={110} radius={Radius.lg} />
-        <Skeleton height={720} radius={Radius.lg} />
-        <Skeleton height={52} radius={Radius.md} />
+        <Skeleton height={110} />
+        <Skeleton height={520} />
+        <Skeleton height={52} />
       </Screen>
     );
   }
@@ -91,11 +105,11 @@ export default function InvoiceDetailScreen() {
         </View>
       </Card>
 
-      <InvoiceDocumentView html={html} style={styles.document} />
+      <InvoiceDocumentView html={html} />
 
-      {shareError ? (
+      {actionError ? (
         <AppText variant="caption" style={{ color: theme.error, textAlign: 'center' }}>
-          {shareError}
+          {actionError}
         </AppText>
       ) : null}
 
@@ -107,13 +121,24 @@ export default function InvoiceDetailScreen() {
             onPress={() => router.push({ pathname: '/pay/[invoiceNo]', params: { invoiceNo: inv.invoiceNo } })}
           />
         ) : null}
-        <Button
-          title="Share PDF"
-          variant={canPay ? 'outline' : 'primary'}
-          loading={sharing}
-          icon={<Feather name="share-2" size={18} color={canPay ? theme.text : theme.onPrimary} />}
-          onPress={handleShare}
-        />
+        <View style={styles.row}>
+          <Button
+            title="Download"
+            variant="outline"
+            style={styles.half}
+            loading={downloading}
+            icon={<Feather name="download" size={18} color={theme.primary} />}
+            onPress={handleDownload}
+          />
+          <Button
+            title="Share"
+            variant="outline"
+            style={styles.half}
+            loading={sharing}
+            icon={<Feather name="share-2" size={18} color={theme.primary} />}
+            onPress={handleShare}
+          />
+        </View>
       </View>
     </Screen>
   );
@@ -123,6 +148,7 @@ const styles = StyleSheet.create({
   screen: { gap: Spacing.two },
   summary: { gap: Spacing.one },
   summaryTop: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.one },
-  document: { minHeight: 760 },
   actions: { gap: Spacing.onehalf },
+  row: { flexDirection: 'row', gap: Spacing.one },
+  half: { flex: 1 },
 });

@@ -30,7 +30,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isRestoring, setIsRestoring] = useState(true);
 
   const clearSessionCache = useCallback(() => {
-    queryClient.clear();
+    queryClient.removeQueries({
+      predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'session',
+    });
   }, [queryClient]);
 
   useEffect(() => {

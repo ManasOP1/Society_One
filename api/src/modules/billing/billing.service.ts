@@ -10,14 +10,17 @@ import { AuthUser } from '../../common/decorators/auth.decorators';
 import {
   buildPaginationMeta,
   parsePagination,
+  resolveListTake,
   wantsPagination,
   type PaginatedResult,
 } from '../../common/utils/pagination.util';
 import { activeOnly } from '../../common/utils/prisma-active.util';
 import { toNumber } from '../../common/utils/decimal.util';
+import { readCache } from '../../common/utils/ttl-cache';
 import { BHK_LABELS, resolveFlatMaintenanceAmount } from '../../common/types/bhk';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { PushNotificationService } from '../notifications/push-notification.service';
 
 export type InvoiceLineItem = {
   description: string;
@@ -99,6 +102,7 @@ export class BillingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly push: PushNotificationService,
   ) {}
 
   async list(
@@ -139,12 +143,21 @@ export class BillingService {
       return result;
     }
 
+    const roleScope = user.role === Role.RESIDENT ? 'resident' : 'admin';
+    const { take } = resolveListTake(filters, roleScope);
+    const cacheKey = `invoices:${societyId}:${user.memberId ?? 'admin'}:${filters?.month ?? 'all'}:${filters?.status ?? 'all'}:${take}`;
+    const cached = readCache.get<ReturnType<typeof serializeInvoice>[]>(cacheKey);
+    if (cached) return cached;
+
     const rows = await this.prisma.invoice.findMany({
       where,
       orderBy,
+      take,
       include: INVOICE_LIST_INCLUDE,
     });
-    return rows.map(serializeInvoice);
+    const payload = rows.map(serializeInvoice);
+    readCache.set(cacheKey, payload, 45_000);
+    return payload;
   }
 
   async getByInvoiceNo(societyId: string, invoiceNo: string, user: AuthUser) {
@@ -209,7 +222,7 @@ export class BillingService {
     });
     let seq = last.length > 0 ? Number(last[0].invoiceNo.slice(prefix.length)) || 0 : 0;
 
-    const created: ReturnType<typeof serializeInvoice>[] = [];
+    const created: string[] = [];
 
     const outstandingRows = await this.prisma.invoice.groupBy({
       by: ['memberId'],
@@ -279,9 +292,9 @@ export class BillingService {
             })),
           },
         },
-        include: INVOICE_INCLUDE,
+        select: { id: true },
       });
-      created.push(serializeInvoice(inv));
+      created.push(inv.id);
     }
 
     await this.audit.log({
@@ -294,11 +307,25 @@ export class BillingService {
       metadata: { count: created.length, month },
     });
 
+    readCache.deletePrefix(`invoices:${societyId}:`);
+    readCache.deletePrefix(`dashboard:${societyId}:`);
+
+    if (created.length > 0) {
+      const label = formatBillingMonth(month);
+      void this.push
+        .notifySocietyResidents(societyId, {
+          title: `${label} maintenance ready`,
+          body: `Your ${label} maintenance invoice is available. Open SocietyOne to view and pay.`,
+          data: { type: 'billing', month },
+        })
+        .catch(() => undefined);
+    }
+
     return {
       month,
       generated: created.length,
       skipped: alreadyBilled.size,
-      invoices: created,
+      invoices: [],
     };
   }
 
@@ -433,4 +460,13 @@ export class BillingService {
 
     return synced;
   }
+}
+
+function formatBillingMonth(ym: string) {
+  const [y, m] = ym.split('-');
+  const names = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  return `${names[Number(m) - 1]} ${y}`;
 }

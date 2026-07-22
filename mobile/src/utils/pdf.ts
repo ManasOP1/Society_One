@@ -11,8 +11,8 @@ import { invoiceDocumentHtml } from '@/utils/invoice-document-html';
 import { amountInWords } from '@/utils/amount-in-words';
 import { formatDate, formatINRNumber, formatMonth } from '@/utils/format';
 
-const BRAND = '#131417';
-const ACCENT = '#D6F252';
+const BRAND = '#4F46E5';
+const ACCENT = '#E0E7FF';
 
 function esc(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -107,13 +107,33 @@ export function receiptHtml(receipt: Receipt, settings: SocietySettings): string
 
 /** Render HTML to PDF and open the native share sheet. */
 export async function sharePdf(html: string, _fileName: string): Promise<void> {
+  const uri = await renderPdf(html);
   if (Platform.OS === 'web') {
-    // Browsers can't share files reliably — open the print dialog instead.
     await Print.printAsync({ html });
     return;
   }
-  const { uri } = await Print.printToFileAsync({ html });
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
   }
+}
+
+/** Save/share PDF for offline access (uses native share sheet → Save to Files). */
+export async function downloadPdf(html: string, fileName: string): Promise<void> {
+  const uri = await renderPdf(html);
+  if (Platform.OS === 'web') {
+    await Print.printAsync({ html });
+    return;
+  }
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(uri, {
+      mimeType: 'application/pdf',
+      UTI: 'com.adobe.pdf',
+      dialogTitle: `Save ${fileName}`,
+    });
+  }
+}
+
+async function renderPdf(html: string): Promise<string> {
+  const { uri } = await Print.printToFileAsync({ html });
+  return uri;
 }

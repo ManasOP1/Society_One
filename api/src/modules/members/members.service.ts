@@ -16,6 +16,7 @@ import { BhkType, isBhkType } from '../../common/types/bhk';
 import {
   buildPaginationMeta,
   parsePagination,
+  resolveListTake,
   wantsPagination,
   type PaginatedResult,
 } from '../../common/utils/pagination.util';
@@ -145,6 +146,7 @@ export class MembersService {
     const rows = await this.prisma.member.findMany({
       where,
       orderBy: { ownerName: 'asc' },
+      take: resolveListTake(opts, 'admin').take,
       include: MEMBER_INCLUDE,
     });
     const payload = rows.map(serializeMember);

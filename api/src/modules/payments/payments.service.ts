@@ -461,6 +461,8 @@ export class PaymentsService {
     }
 
     readCache.deletePrefix(`dashboard:${updatedPayment.societyId}:`);
+    readCache.deletePrefix(`invoices:${updatedPayment.societyId}:`);
+    readCache.deletePrefix(`receipts:${updatedPayment.societyId}:`);
     return { duplicate: false, paymentId: updatedPayment.id, receiptId: receipt?.id };
   }
 }

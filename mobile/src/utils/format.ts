@@ -33,10 +33,21 @@ export function formatINR(amount: number): string {
   return `₹${formatINRNumber(amount)}`;
 }
 
+/** Parse YYYY-MM-DD as local calendar date (avoids UTC off-by-one). */
+export function parseLocalDate(value: string | Date): Date {
+  if (value instanceof Date) return value;
+  const iso = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [y, m, d] = iso.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+  return new Date(iso);
+}
+
 /** ISO date (YYYY-MM-DD or full ISO) → DD-MM-YYYY */
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
-  const d = new Date(iso);
+  const d = parseLocalDate(iso);
   if (Number.isNaN(d.getTime())) return iso;
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -58,8 +69,9 @@ export function formatMonthShort(month: string): string {
 }
 
 export function daysUntil(iso: string): number {
-  const target = new Date(iso);
-  const today = new Date(new Date().toDateString());
+  const target = parseLocalDate(iso);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
   return Math.round((target.getTime() - today.getTime()) / 86_400_000);
 }
 

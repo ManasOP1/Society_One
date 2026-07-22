@@ -33,10 +33,10 @@ export default function DashboardPage() {
         description={society.address}
         actions={
           <div className="rounded-xl border border-border bg-card px-4 py-2.5 shadow-[var(--shadow-card)]">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-caption font-semibold uppercase tracking-wide text-muted-foreground">
               Today
             </p>
-            <p className="text-sm font-semibold text-foreground">{today}</p>
+            <p className="text-[0.9375rem] font-semibold text-foreground">{today}</p>
           </div>
         }
       />

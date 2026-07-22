@@ -80,16 +80,22 @@ export const dashboardApi = {
       .then((r) => mapDashboard(r.data) as DashboardSummary),
 };
 
+function unwrapRows<T>(payload: T[] | { data?: T[] }): T[] {
+  if (Array.isArray(payload)) return payload;
+  return Array.isArray(payload?.data) ? payload.data : [];
+}
+
 export const invoiceApi = {
   list: (filters: InvoiceFilters = {}) =>
     api
-      .get<Record<string, unknown>[]>('/invoices', {
+      .get<Record<string, unknown>[] | { data: Record<string, unknown>[] }>('/invoices', {
         params: {
+          limit: 36,
           status: filters.status && filters.status !== 'All' ? filters.status : undefined,
           month: filters.month || undefined,
         },
       })
-      .then((r) => r.data.map(mapInvoice)) as Promise<Invoice[]>,
+      .then((r) => unwrapRows(r.data).map(mapInvoice)) as Promise<Invoice[]>,
   byNo: (invoiceNo: string) =>
     api
       .get<Record<string, unknown>>(`/invoices/${encodeURIComponent(invoiceNo)}`)
@@ -194,7 +200,12 @@ export const paymentApi = {
 };
 
 export const receiptApi = {
-  list: () => api.get<Record<string, unknown>[]>('/receipts').then((r) => r.data.map(mapReceipt)) as Promise<Receipt[]>,
+  list: () =>
+    api
+      .get<Record<string, unknown>[] | { data: Record<string, unknown>[] }>('/receipts', {
+        params: { limit: 36 },
+      })
+      .then((r) => unwrapRows(r.data).map(mapReceipt)) as Promise<Receipt[]>,
   byNo: (receiptNo: string) =>
     api
       .get<Record<string, unknown>>(`/receipts/${encodeURIComponent(receiptNo)}`)

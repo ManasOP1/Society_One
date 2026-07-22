@@ -23,9 +23,13 @@ export class ReceiptsController {
     @CurrentUser() user: AuthUser,
     @Query('societyId') societyId?: string,
     @Query('month') month?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     return this.receipts.list(resolveSocietyId(user, societyId), user, {
       month,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
     });
   }
 

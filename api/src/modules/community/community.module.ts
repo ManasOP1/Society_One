@@ -5,10 +5,15 @@ import { EventStatus, InvoiceStatus, Role } from '../../common/types/roles';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { CurrentUser, Roles, type AuthUser } from '../../common/decorators/auth.decorators';
 import { readCache } from '../../common/utils/ttl-cache';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { PushNotificationService } from '../notifications/push-notification.service';
 
 @Injectable()
 export class CommunityService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly push: PushNotificationService,
+  ) {}
 
   private sid(user: AuthUser) {
     if (!user.societyId) throw new BadRequestException('No society scope');
@@ -19,6 +24,15 @@ export class CommunityService {
     return this.prisma.notice.findMany({
       where: { societyId: this.sid(user), deletedAt: null },
       orderBy: [{ pinned: 'desc' }, { publishedAt: 'desc' }],
+      take: 30,
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        pinned: true,
+        publishedAt: true,
+        createdAt: true,
+      },
     });
   }
 
@@ -41,6 +55,15 @@ export class CommunityService {
         body: data.body,
         pinned: data.pinned ?? false,
       },
+    }).then(async (notice) => {
+      void this.push
+        .notifySocietyResidents(societyId, {
+          title: 'New society notice',
+          body: data.title,
+          data: { type: 'notice', id: notice.id },
+        })
+        .catch(() => undefined);
+      return notice;
     });
   }
 
@@ -81,6 +104,17 @@ export class CommunityService {
     return this.prisma.societyEvent.findMany({
       where: { societyId: this.sid(user), deletedAt: null },
       orderBy: { eventDate: 'asc' },
+      take: 30,
+      select: {
+        id: true,
+        title: true,
+        eventDate: true,
+        endDate: true,
+        location: true,
+        description: true,
+        budget: true,
+        statusCode: true,
+      },
     });
   }
 
@@ -118,6 +152,15 @@ export class CommunityService {
         budget: data.budget ?? 0,
         statusCode: data.status ?? EventStatus.UPCOMING,
       },
+    }).then(async (event) => {
+      void this.push
+        .notifySocietyResidents(societyId, {
+          title: 'New society event',
+          body: `${data.title} · ${formatEventDate(data.date)}`,
+          data: { type: 'event', id: event.id },
+        })
+        .catch(() => undefined);
+      return event;
     });
   }
 
@@ -205,7 +248,6 @@ export class CommunityService {
           select: {
             id: true,
             title: true,
-            body: true,
             pinned: true,
             publishedAt: true,
             createdAt: true,
@@ -225,7 +267,6 @@ export class CommunityService {
             eventDate: true,
             endDate: true,
             location: true,
-            description: true,
             statusCode: true,
           },
         }),
@@ -359,7 +400,15 @@ export class CommunityController {
 
 @Module({
   controllers: [CommunityController],
+  imports: [NotificationsModule],
   providers: [CommunityService],
   exports: [CommunityService],
 })
 export class CommunityModule {}
+
+function formatEventDate(iso: string) {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(iso)
+    ? new Date(`${iso}T12:00:00`)
+    : new Date(iso);
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}

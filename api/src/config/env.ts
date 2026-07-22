@@ -62,8 +62,8 @@ export const envSchema = z
     WHATSAPP_API_TOKEN: emptyToUndefined,
     THROTTLE_TTL_MS: z.coerce.number().default(60_000),
     THROTTLE_LIMIT: z.coerce.number().optional(),
-    /** pg.Pool max connections per API instance (Supabase pooler ~15–20 total). */
-    DB_POOL_MAX: z.coerce.number().default(10),
+    /** pg.Pool max connections per API instance (Supabase free pooler ~15 total). */
+    DB_POOL_MAX: z.coerce.number().default(5),
     DB_POOL_IDLE_MS: z.coerce.number().default(30_000),
     DB_POOL_CONN_TIMEOUT_MS: z.coerce.number().default(30_000),
     APP_PUBLIC_URL: z.string().url().default('http://localhost:4000'),

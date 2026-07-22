@@ -39,8 +39,8 @@ if (!API_BASE_URL && !IS_MOCK_API) {
 
 export const api = create({
   baseURL: API_BASE_URL || 'http://mock.societyone.local',
-  /** Allow Render free-tier cold starts (~30–50s) without failing first login. */
-  timeout: 45_000,
+  /** Warm path: fail in ~12s; TanStack Query retries once for cold Render wake-up. */
+  timeout: 15_000,
   headers: { 'Content-Type': 'application/json' },
   ...(IS_MOCK_API ? { adapter: mockAdapter } : {}),
 });

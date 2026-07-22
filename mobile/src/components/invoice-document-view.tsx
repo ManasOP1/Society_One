@@ -1,4 +1,4 @@
-import { Platform, StyleSheet, View, type ViewStyle } from 'react-native';
+import { useWindowDimensions, Platform, StyleSheet, View, type ViewStyle } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 type Props = {
@@ -7,9 +7,12 @@ type Props = {
 };
 
 /**
- * Renders the formal invoice HTML document — same layout as the admin console.
+ * Renders the formal invoice/receipt HTML document — responsive on all screen sizes.
  */
 export function InvoiceDocumentView({ html, style }: Props) {
+  const { width, height } = useWindowDimensions();
+  const docHeight = Math.max(480, Math.min(height * 0.62, 920));
+
   if (Platform.OS === 'web') {
     const Iframe = 'iframe' as unknown as React.ComponentType<{
       srcDoc: string;
@@ -17,25 +20,27 @@ export function InvoiceDocumentView({ html, style }: Props) {
       style: React.CSSProperties;
     }>;
     return (
-      <View style={[styles.frame, style]}>
+      <View style={[styles.frame, { minHeight: docHeight }, style]}>
         <Iframe
           srcDoc={html}
-          title="Invoice"
-          style={{ width: '100%', minHeight: 900, border: 'none', backgroundColor: '#fff' }}
+          title="Document"
+          style={{ width: '100%', minHeight: docHeight, border: 'none', backgroundColor: '#fff' }}
         />
       </View>
     );
   }
 
   return (
-    <View style={[styles.frame, style]}>
+    <View style={[styles.frame, { minHeight: docHeight, width: width - 32 }, style]}>
       <WebView
         originWhitelist={['*']}
         source={{ html }}
         scrollEnabled
         showsVerticalScrollIndicator={false}
-        style={styles.webview}
+        style={[styles.webview, { minHeight: docHeight }]}
         nestedScrollEnabled
+        scalesPageToFit
+        setBuiltInZoomControls={false}
       />
     </View>
   );
@@ -44,14 +49,13 @@ export function InvoiceDocumentView({ html, style }: Props) {
 const styles = StyleSheet.create({
   frame: {
     width: '100%',
-    minHeight: 720,
     backgroundColor: '#fff',
-    borderRadius: 8,
+    borderRadius: 12,
     overflow: 'hidden',
+    alignSelf: 'center',
   },
   webview: {
     flex: 1,
-    minHeight: 720,
     backgroundColor: '#fff',
   },
 });
