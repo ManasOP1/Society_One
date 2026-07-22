@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 import { Role, pickPrimaryRole } from '../../common/types/roles';
+import { readCache } from '../../common/utils/ttl-cache';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { AuthUser } from '../../common/decorators/auth.decorators';
 
@@ -77,26 +78,38 @@ export class AuthService {
 
   /** Societies available on the mobile login screen (no auth required). */
   async listSocietiesForLogin() {
-    return this.prisma.society.findMany({
+    const cacheKey = 'login:societies';
+    const cached = readCache.get<{ id: string; name: string }[]>(cacheKey);
+    if (cached) return cached;
+
+    const rows = await this.prisma.society.findMany({
       where: { deletedAt: null, statusCode: 'ACTIVE' },
       orderBy: { name: 'asc' },
       select: { id: true, name: true },
     });
+    readCache.set(cacheKey, rows, 5 * 60_000);
+    return rows;
   }
 
   /** Wings for a selected society — used to populate the login picker. */
   async listWingsForLogin(societyId: string) {
+    const cacheKey = `login:wings:${societyId}`;
+    const cached = readCache.get<{ id: string; code: string; name: string }[]>(cacheKey);
+    if (cached) return cached;
+
     const society = await this.prisma.society.findFirst({
       where: { id: societyId, deletedAt: null, statusCode: 'ACTIVE' },
       select: { id: true },
     });
     if (!society) throw new UnauthorizedException('Invalid society');
 
-    return this.prisma.wing.findMany({
+    const rows = await this.prisma.wing.findMany({
       where: { societyId, deletedAt: null },
       orderBy: { code: 'asc' },
       select: { id: true, code: true, name: true },
     });
+    readCache.set(cacheKey, rows, 5 * 60_000);
+    return rows;
   }
 
   /**
@@ -137,6 +150,7 @@ export class AuthService {
       },
       orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
       include: {
+        flat: { include: { wing: { select: { code: true } } } },
         member: {
           include: {
             user: { select: USER_WITH_ROLES_SELECT },
@@ -160,7 +174,10 @@ export class AuthService {
       })
       .catch(() => undefined);
 
-    return this.issueTokens(user);
+    const primaryFlat = memberFlat.flat
+      ? { wing: memberFlat.flat.wing.code, flatNo: memberFlat.flat.flatNo }
+      : null;
+    return this.issueTokens(user, primaryFlat);
   }
 
   async refresh(refreshToken: string) {
@@ -384,9 +401,15 @@ export class AuthService {
     };
   }
 
-  private async issueTokens(user: UserWithRoles) {
+  private async issueTokens(
+    user: UserWithRoles,
+    knownPrimaryFlat?: { wing: string; flatNo: string } | null,
+  ) {
     const role = pickPrimaryRole(user.roles.map((r) => r.roleCode));
-    const primaryFlat = await this.resolvePrimaryFlat(user.memberId);
+    const primaryFlat =
+      knownPrimaryFlat !== undefined
+        ? knownPrimaryFlat
+        : await this.resolvePrimaryFlat(user.memberId);
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,

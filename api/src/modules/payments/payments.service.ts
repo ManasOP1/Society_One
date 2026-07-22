@@ -16,6 +16,7 @@ import {
   type NotificationJob,
   type PdfJob,
 } from '../../infrastructure/queue/queue.constants';
+import { readCache } from '../../common/utils/ttl-cache';
 
 @Injectable()
 export class PaymentsService {
@@ -459,6 +460,7 @@ export class PaymentsService {
       }
     }
 
+    readCache.deletePrefix(`dashboard:${updatedPayment.societyId}:`);
     return { duplicate: false, paymentId: updatedPayment.id, receiptId: receipt?.id };
   }
 }

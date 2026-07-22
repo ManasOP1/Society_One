@@ -4,6 +4,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { EventStatus, InvoiceStatus, Role } from '../../common/types/roles';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { CurrentUser, Roles, type AuthUser } from '../../common/decorators/auth.decorators';
+import { readCache } from '../../common/utils/ttl-cache';
 
 @Injectable()
 export class CommunityService {
@@ -167,6 +168,12 @@ export class CommunityService {
 
   async dashboard(user: AuthUser) {
     const societyId = this.sid(user);
+    const scope =
+      user.role === Role.RESIDENT && user.memberId ? `m:${user.memberId}` : 'admin';
+    const cacheKey = `dashboard:${societyId}:${scope}`;
+    const cached = readCache.get<Record<string, unknown>>(cacheKey);
+    if (cached) return cached;
+
     const invoiceWhere =
       user.role === Role.RESIDENT && user.memberId
         ? { societyId, memberId: user.memberId, statusCode: { not: InvoiceStatus.CANCELLED } }
@@ -177,6 +184,8 @@ export class CommunityService {
       outstanding: { gt: 0 },
       deletedAt: null,
     };
+
+    const todayStart = new Date(new Date().toISOString().slice(0, 10));
 
     const [invoiceAgg, next, latestNotice, upcomingEvent, lastReceipt, visitorsToday] =
       await Promise.all([
@@ -193,6 +202,14 @@ export class CommunityService {
         this.prisma.notice.findFirst({
           where: { societyId, deletedAt: null },
           orderBy: [{ pinned: 'desc' }, { publishedAt: 'desc' }],
+          select: {
+            id: true,
+            title: true,
+            body: true,
+            pinned: true,
+            publishedAt: true,
+            createdAt: true,
+          },
         }),
         this.prisma.societyEvent.findFirst({
           where: {
@@ -202,6 +219,15 @@ export class CommunityService {
             statusCode: { not: EventStatus.COMPLETED },
           },
           orderBy: { eventDate: 'asc' },
+          select: {
+            id: true,
+            title: true,
+            eventDate: true,
+            endDate: true,
+            location: true,
+            description: true,
+            statusCode: true,
+          },
         }),
         this.prisma.receipt.findFirst({
           where: {
@@ -210,19 +236,28 @@ export class CommunityService {
             ...(user.role === Role.RESIDENT && user.memberId ? { memberId: user.memberId } : {}),
           },
           orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            receiptNo: true,
+            amount: true,
+            totalPaid: true,
+            paymentDate: true,
+            createdAt: true,
+            modeCode: true,
+          },
         }),
         this.prisma.visitor.count({
           where: {
             societyId,
             deletedAt: null,
-            createdAt: { gte: new Date(new Date().toISOString().slice(0, 10)) },
+            createdAt: { gte: todayStart },
           },
         }),
       ]);
 
     const outstandingTotal = Number(invoiceAgg._sum.outstanding ?? 0);
 
-    return {
+    const payload = {
       outstandingTotal,
       nextDueDate: next?.dueDate?.toISOString().slice(0, 10) ?? null,
       nextDueInvoiceNo: next?.invoiceNo ?? null,
@@ -232,6 +267,8 @@ export class CommunityService {
       lastReceipt,
       visitorsToday,
     };
+    readCache.set(cacheKey, payload, 45_000);
+    return payload;
   }
 }
 

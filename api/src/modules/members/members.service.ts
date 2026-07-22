@@ -21,6 +21,7 @@ import {
 } from '../../common/utils/pagination.util';
 import { activeOnly } from '../../common/utils/prisma-active.util';
 import { toNumber } from '../../common/utils/decimal.util';
+import { readCache } from '../../common/utils/ttl-cache';
 
 export type CreateMemberInput = {
   ownerName: string;
@@ -137,12 +138,18 @@ export class MembersService {
       return result;
     }
 
+    const cacheKey = `members:${societyId}`;
+    const cached = readCache.get<ReturnType<typeof serializeMember>[]>(cacheKey);
+    if (cached) return cached;
+
     const rows = await this.prisma.member.findMany({
       where,
       orderBy: { ownerName: 'asc' },
       include: MEMBER_INCLUDE,
     });
-    return rows.map(serializeMember);
+    const payload = rows.map(serializeMember);
+    readCache.set(cacheKey, payload, 30_000);
+    return payload;
   }
 
   async getById(societyId: string, id: string, user: AuthUser) {
@@ -222,6 +229,7 @@ export class MembersService {
       entityId: member.id,
       details: `${member.ownerName} ${input.wing}-${input.flatNo} (app login provisioned)`,
     }).catch(() => undefined);
+    readCache.delete(`members:${societyId}`);
     return serializeMember(member);
   }
 
@@ -334,6 +342,7 @@ export class MembersService {
       entityId: id,
       details: `Updated ${input.ownerName ?? existing.ownerName}`,
     });
+    readCache.delete(`members:${societyId}`);
     return this.getById(societyId, id, actor);
   }
 
@@ -356,6 +365,7 @@ export class MembersService {
       entityType: 'Member',
       entityId: id,
     });
+    readCache.delete(`members:${societyId}`);
     return { success: true };
   }
 

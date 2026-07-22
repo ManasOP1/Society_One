@@ -2,6 +2,7 @@
 import { Prisma, SocietySettings, Society } from '@prisma/client';
 import { AuthUser } from '../../common/decorators/auth.decorators';
 import { toNumber } from '../../common/utils/decimal.util';
+import { readCache } from '../../common/utils/ttl-cache';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { BillingService } from '../billing/billing.service';
@@ -89,6 +90,10 @@ export class SettingsService {
   ) {}
 
   async get(societyId: string) {
+    const cacheKey = `settings:${societyId}`;
+    const cached = readCache.get<ReturnType<typeof serializeSettings>>(cacheKey);
+    if (cached) return cached;
+
     let settings = await this.prisma.societySettings.findUnique({
       where: { societyId },
       include: { society: true },
@@ -100,11 +105,15 @@ export class SettingsService {
         include: { society: true },
       });
     }
-    return serializeSettings(settings);
+    const payload = serializeSettings(settings);
+    readCache.set(cacheKey, payload, 5 * 60_000);
+    return payload;
   }
 
   async update(societyId: string, input: UpdateSettingsInput, actor: AuthUser) {
     await this.get(societyId);
+    readCache.delete(`settings:${societyId}`);
+    readCache.deletePrefix(`dashboard:${societyId}:`);
 
     const societyPatch: Prisma.SocietyUpdateInput = {};
     if (input.societyName !== undefined) societyPatch.name = input.societyName.trim();
@@ -176,10 +185,12 @@ export class SettingsService {
       invoicesSynced = await this.billing.syncOpenInvoicesFromSettings(societyId);
     }
 
-    return {
+    const payload = {
       ...serializeSettings(settings),
       invoicesSynced,
     };
+    readCache.set(`settings:${societyId}`, serializeSettings(settings), 5 * 60_000);
+    return payload;
   }
 
   /** Push BHK default amounts from society settings onto matching flats. */

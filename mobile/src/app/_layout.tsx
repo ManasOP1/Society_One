@@ -23,14 +23,17 @@ SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
+      /** Fresh for 2 minutes — avoid hammering a cold Render free tier. */
       staleTime: LIVE_SYNC_MS,
-      refetchInterval: LIVE_SYNC_MS,
+      /** No global polling; refetch on reconnect / foreground invalidation only. */
+      refetchInterval: false,
       refetchIntervalInBackground: false,
       refetchOnMount: false,
       refetchOnReconnect: true,
       refetchOnWindowFocus: false,
-      retry: 1,
-      /** Keep current UI visible while polling — no flash to skeleton. */
+      retry: 2,
+      retryDelay: (attempt) => Math.min(1_000 * 2 ** attempt, 8_000),
+      /** Keep current UI visible while refetching — no flash to skeleton. */
       placeholderData: keepPreviousData,
     },
   },
