@@ -44,7 +44,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     let stored: Theme = "light";
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw === "light" || raw === "dark" || raw === "system") stored = raw;
+      if (raw === "light" || raw === "dark") stored = raw;
+      // Ignore "system" — keep admin console light unless user picks dark explicitly.
     } catch {
       /* ignore */
     }

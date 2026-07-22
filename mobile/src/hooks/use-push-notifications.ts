@@ -1,30 +1,41 @@
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
 import { api } from '@/api/client';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
-
 const EAS_PROJECT_ID = 'fe5dd236-8e6e-4f90-83a4-c1fed8534bdc';
+
+/** Expo Go cannot register remote push tokens (SDK 53+). Use an EAS dev/production build. */
+function isExpoGo(): boolean {
+  return (
+    Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
+    Constants.appOwnership === 'expo'
+  );
+}
 
 /** Register Expo push token with the API when the user is signed in. */
 export function usePushNotifications(enabled: boolean) {
   useEffect(() => {
-    if (!enabled || !Device.isDevice) return;
+    if (!enabled || !Device.isDevice || isExpoGo()) return;
 
     let cancelled = false;
 
     (async () => {
+      // Lazy-load so Expo Go never imports expo-notifications (it throws on load).
+      const Notifications = await import('expo-notifications');
+
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+          shouldShowBanner: true,
+          shouldShowList: true,
+        }),
+      });
+
       const { status: existing } = await Notifications.getPermissionsAsync();
       let finalStatus = existing;
       if (existing !== 'granted') {

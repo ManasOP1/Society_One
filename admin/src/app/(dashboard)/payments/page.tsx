@@ -13,9 +13,6 @@ import {
   ExternalLink,
   Search,
   X,
-  CheckCircle2,
-  AlertCircle,
-  Clock,
 } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import { useInvoices } from "@/hooks/useInvoices";
@@ -29,7 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { AnimatedCounter } from "@/components/shared/animated-counter";
+import { NativeSelect } from "@/components/ui/native-select";
 
 const statusVariant: Record<
   InvoiceStatus,
@@ -236,16 +233,77 @@ export default function PaymentsPage() {
 
   if (!society) return null;
 
+  const periodLabel =
+    view === "monthly" ? formatMonthLabel(month) : String(year);
+
   return (
     <PageTransition>
       <PageHeader
         eyebrow={society.name}
         title="Payments & collections"
-        description="Review dues, search transactions, record payments and open invoices or receipts by period"
+        description="Record cash, UPI and bank payments — receipts sync to the resident app"
         actions={
           <>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex rounded-2xl border border-input bg-card p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setView("monthly")}
+                  className={cn(
+                    "rounded-[14px] px-3 py-1.5 text-sm font-medium transition-colors",
+                    view === "monthly"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Monthly
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setView("annual")}
+                  className={cn(
+                    "rounded-[14px] px-3 py-1.5 text-sm font-medium transition-colors",
+                    view === "annual"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Annual
+                </button>
+              </div>
+              <NativeSelect
+                fieldSize="filter"
+                value={year}
+                onChange={(e) => {
+                  const nextYear = Number(e.target.value);
+                  setYear(nextYear);
+                  setMonth(`${nextYear}-${month.slice(5, 7)}`);
+                }}
+                aria-label="Filter by year"
+              >
+                {availableYears.map((availableYear) => (
+                  <option key={availableYear} value={availableYear}>
+                    {availableYear}
+                  </option>
+                ))}
+              </NativeSelect>
+              {view === "monthly" ? (
+                <NativeSelect
+                  fieldSize="filter"
+                  value={month}
+                  onChange={(e) => setMonth(e.target.value)}
+                  aria-label="Filter by month"
+                >
+                  {MONTHS.map((m) => (
+                    <option key={m} value={`${year}-${m}`}>
+                      {formatMonthLabel(`${year}-${m}`)}
+                    </option>
+                  ))}
+                </NativeSelect>
+              ) : null}
+            </div>
             <Button variant="outline" size="sm" asChild>
-              <Link href="/invoices">Go to Invoices</Link>
+              <Link href="/invoices">Invoices</Link>
             </Button>
             <Button variant="outline" size="sm" onClick={exportCsv}>
               <Download className="h-4 w-4" /> Export
@@ -255,320 +313,173 @@ export default function PaymentsPage() {
       />
 
       {toast && (
-        <p className="rounded-xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+        <p className="rounded-xl bg-emerald-50 px-4 py-2 text-sm text-emerald-700">
           {toast}
         </p>
       )}
 
-      {/* Period + progress */}
-      <Card className="overflow-hidden border border-slate-200 bg-white shadow-[var(--shadow-card)]">
-        <CardContent className="p-6 sm:p-7">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {view === "monthly" ? formatMonthLabel(month) : `${year}`}{" "}
-                collection
-              </p>
-              <p className="mt-2 text-4xl font-bold tabular-nums tracking-tight text-primary">
-                {stats.percent}%
-              </p>
-              <p className="mt-1.5 text-sm text-muted-foreground">
-                {formatCurrency(stats.collected)} of{" "}
-                {formatCurrency(stats.expected)} expected
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2.5">
-              <button
-                type="button"
-                onClick={() => setView("monthly")}
-                className={cn(
-                  "rounded-full px-4 py-2 text-sm font-semibold transition-colors duration-150",
-                  view === "monthly"
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                )}
-              >
-                Monthly
-              </button>
-              <button
-                type="button"
-                onClick={() => setView("annual")}
-                className={cn(
-                  "rounded-full px-4 py-2 text-sm font-semibold transition-colors duration-150",
-                  view === "annual"
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                )}
-              >
-                Annual
-              </button>
-              <select
-                value={year}
-                onChange={(e) => {
-                  const nextYear = Number(e.target.value);
-                  setYear(nextYear);
-                  setMonth(`${nextYear}-${month.slice(5, 7)}`);
-                }}
-                className="h-10 rounded-full border border-input bg-background px-3.5 text-sm font-medium text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-                aria-label="Filter by year"
-              >
-                {availableYears.map((availableYear) => (
-                  <option key={availableYear} value={availableYear}>
-                    {availableYear}
-                  </option>
-                ))}
-              </select>
-              {view === "monthly" ? (
-                <select
-                  value={month}
-                  onChange={(e) => setMonth(e.target.value)}
-                  className="h-10 rounded-full border border-input bg-background px-3.5 text-sm font-medium text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  aria-label="Filter by month"
-                >
-                  {MONTHS.map((m) => (
-                    <option key={m} value={`${year}-${m}`}>
-                      {formatMonthLabel(`${year}-${m}`)}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-            </div>
-          </div>
-          <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
-              style={{ width: `${Math.min(100, stats.percent)}%` }}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[
+          { label: "Expected", value: formatCurrency(stats.expected) },
+          { label: "Collected", value: formatCurrency(stats.collected) },
+          { label: "Outstanding", value: formatCurrency(stats.outstanding) },
+          { label: "Collection %", value: `${stats.percent}%` },
+          { label: "Pending flats", value: String(stats.pendingFlats) },
+          { label: "Partial", value: String(stats.partial) },
+          { label: "Late / overdue", value: String(stats.late) },
           {
-            label: "Outstanding",
-            value: stats.outstanding,
-            sub: `${stats.pendingFlats} flats pending`,
-            icon: AlertCircle,
-            accent: "text-red-600 bg-red-50 dark:bg-red-950/30",
+            label: "Today's collection",
+            value: formatCurrency(stats.todayCollection),
           },
-          {
-            label: "Collected",
-            value: stats.collected,
-            sub: "This period",
-            icon: CheckCircle2,
-            accent: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30",
-          },
-          {
-            label: "Today",
-            value: stats.todayCollection,
-            sub: "Recorded today",
-            icon: Clock,
-            accent: "text-primary bg-indigo-50 dark:bg-indigo-950/40",
-          },
-          {
-            label: "Attention",
-            value: stats.late + stats.partial,
-            sub: `${stats.late} late · ${stats.partial} partial`,
-            icon: AlertCircle,
-            accent: "text-orange-600 bg-orange-50 dark:bg-orange-950/30",
-            isCount: true,
-          },
-        ].map((item) => (
-          <Card key={item.label}>
-            <CardContent className="flex gap-3.5 p-4 sm:p-5">
-              <div
-                className={cn(
-                  "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
-                  item.accent
-                )}
-              >
-                <item.icon className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-caption font-medium text-muted-foreground">{item.label}</p>
-                <p className="mt-1 truncate text-lg font-bold sm:text-xl">
-                  {"isCount" in item && item.isCount ? (
-                    item.value
-                  ) : (
-                    <AnimatedCounter
-                      value={item.value as number}
-                      format={(n) => formatCurrency(n)}
-                    />
-                  )}
-                </p>
-                <p className="mt-0.5 truncate text-caption text-muted-foreground">
-                  {item.sub}
-                </p>
-              </div>
+        ].map((s) => (
+          <Card key={s.label}>
+            <CardContent className="p-4">
+              <p className="text-caption text-muted-foreground">
+                {s.label}
+                {s.label === "Collected" ? ` · ${periodLabel}` : ""}
+              </p>
+              <p className="mt-1.5 truncate text-base font-bold sm:text-lg">
+                {s.value}
+              </p>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Desk tabs */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-1 rounded-2xl bg-secondary/60 p-1.5">
-          {(
-            [
-              { id: "dues" as const, label: `Dues (${dues.length})` },
-              { id: "receipts" as const, label: `Receipts (${receipts.length})` },
-              { id: "all" as const, label: `All invoices (${periodInvoices.length})` },
-            ] as const
-          ).map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={cn(
-                "rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors duration-150",
-                tab === t.id
-                  ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            fieldSize="filter"
-            className="pl-9"
-            placeholder="Search flat, owner, invoice…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
-      </div>
-
-      {tab !== "receipts" && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">
-              {tab === "dues" ? "Who still owes" : "Period invoices"}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {tab === "dues"
-                ? "Select a flat to record cash / UPI / bank payment and generate a receipt."
-                : "Full list for this period. Use Dues tab to collect."}
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {filteredList.length === 0 && (
-              <p className="py-12 text-center text-sm text-muted-foreground">
-                {tab === "dues"
-                  ? "No outstanding dues for this period."
-                  : "No invoices. Generate them from Invoices."}
-              </p>
-            )}
-            {filteredList.map((p) => (
-              <div
-                key={p.id}
-                className="flex flex-col gap-4 rounded-2xl border border-border/50 bg-card p-4 transition-colors duration-150 hover:border-primary/30 hover:bg-secondary/20 sm:flex-row sm:items-center"
+      <Card>
+        <CardHeader className="gap-4 space-y-0 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-1 rounded-2xl bg-secondary/70 p-1">
+            {(
+              [
+                { id: "dues" as const, label: `Dues (${dues.length})` },
+                { id: "receipts" as const, label: `Receipts (${receipts.length})` },
+                { id: "all" as const, label: `All (${periodInvoices.length})` },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={cn(
+                  "rounded-xl px-4 py-2 text-sm font-semibold transition-colors",
+                  tab === t.id
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
               >
-                <div className="flex min-w-0 flex-1 items-start gap-3.5">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-xs font-bold text-primary dark:bg-primary/20">
-                    {p.wing}-{p.flatNo}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-[0.9375rem] font-semibold">{p.ownerName}</p>
-                    <p className="mt-0.5 text-caption text-muted-foreground">
-                      {p.invoiceNo} · Due {formatDate(p.dueDate)}
-                      {p.lateFee > 0 ? ` · Late ₹${p.lateFee}` : ""}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2.5 sm:justify-end">
-                  <div className="mr-1 text-right">
-                    <p className="text-[0.9375rem] font-bold">
-                      {formatCurrency(p.outstanding > 0 ? p.outstanding : p.totalAmount)}
-                    </p>
-                    <p className="text-caption text-muted-foreground">
-                      {p.outstanding > 0
-                        ? `of ${formatCurrency(p.totalAmount)}`
-                        : "Fully paid"}
-                    </p>
-                  </div>
-                  <Badge variant={statusVariant[p.status]}>{p.status}</Badge>
-                  <Link
-                    href={`/invoice/${p.invoiceNo}`}
-                    target="_blank"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"
-                    title="Public invoice"
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              fieldSize="filter"
+              className="pl-9"
+              placeholder="Search flat, owner, invoice…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-3 pt-0">
+          {tab !== "receipts" && (
+            <>
+              {filteredList.length === 0 ? (
+                <p className="py-12 text-center text-sm text-muted-foreground">
+                  {tab === "dues"
+                    ? "No outstanding dues for this period."
+                    : "No invoices for this period."}
+                </p>
+              ) : (
+                filteredList.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <ExternalLink className="h-4 w-4" />
-                  </Link>
-                  {p.outstanding > 0 ? (
-                    <Button size="sm" onClick={() => openCollect(p)}>
-                      Record payment
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setTab("receipts")}
-                    >
-                      View receipts
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-xs font-bold text-indigo-700">
+                        {p.wing}-{p.flatNo}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold">{p.ownerName}</p>
+                        <p className="mt-0.5 text-caption text-muted-foreground">
+                          {p.invoiceNo} · Due {formatDate(p.dueDate)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                      <div className="mr-1 text-right">
+                        <p className="font-bold">
+                          {formatCurrency(
+                            p.outstanding > 0 ? p.outstanding : p.totalAmount
+                          )}
+                        </p>
+                        <p className="text-caption text-muted-foreground">
+                          {p.outstanding > 0 ? "Outstanding" : "Paid"}
+                        </p>
+                      </div>
+                      <Badge variant={statusVariant[p.status]}>{p.status}</Badge>
+                      <Link
+                        href={`/invoice/${p.invoiceNo}`}
+                        target="_blank"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground hover:bg-secondary"
+                        title="Open invoice"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Link>
+                      {p.outstanding > 0 ? (
+                        <Button size="sm" onClick={() => openCollect(p)}>
+                          Record payment
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))
+              )}
+            </>
+          )}
 
-      {tab === "receipts" && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              Receipt ledger ({filteredReceipts.length})
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Every recorded collection for this period
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {!filteredReceipts.length && (
-              <p className="py-12 text-center text-sm text-muted-foreground">
-                No receipts yet. Record a payment from the Dues tab.
-              </p>
-            )}
-            {filteredReceipts.map((r) => (
-              <div
-                key={r.id}
-                className="flex flex-wrap items-center gap-3.5 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20"
-              >
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50">
-                  <Receipt className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-emerald-800 dark:text-emerald-300">
-                    {r.receiptNo}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {r.wing}-{r.flatNo} · {r.ownerName} · {r.paymentDate} ·{" "}
-                    {r.paymentMode} · {r.invoiceNo}
-                  </p>
-                </div>
-                <p className="text-base font-bold">{formatCurrency(r.amount)}</p>
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={`/receipt/${r.receiptNo}`} target="_blank">
-                    Open
-                  </Link>
-                </Button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+          {tab === "receipts" && (
+            <>
+              {!filteredReceipts.length ? (
+                <p className="py-12 text-center text-sm text-muted-foreground">
+                  No receipts for this period. Record a payment from Dues.
+                </p>
+              ) : (
+                filteredReceipts.map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex flex-wrap items-center gap-3 rounded-2xl border border-border/60 border-l-4 border-l-emerald-500 bg-card p-4"
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                      <Receipt className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold">{r.receiptNo}</p>
+                      <p className="text-caption text-muted-foreground">
+                        {r.wing}-{r.flatNo} · {r.ownerName} ·{" "}
+                        {formatDate(r.paymentDate)} · {r.paymentMode}
+                      </p>
+                    </div>
+                    <p className="font-bold">{formatCurrency(r.amount)}</p>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={`/receipt/${r.receiptNo}`} target="_blank">
+                        Open
+                      </Link>
+                    </Button>
+                  </div>
+                ))
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
-      {/* Record payment modal */}
       {collecting && (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
-          <Card className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl sm:rounded-2xl">
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-slate-900/20 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <Card className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-border shadow-xl sm:rounded-2xl">
             <CardHeader className="flex-row items-start justify-between space-y-0">
               <div>
                 <CardTitle>Record payment</CardTitle>
@@ -636,10 +547,10 @@ export default function PaymentsPage() {
                       type="button"
                       onClick={() => setPayMode(m.label)}
                       className={cn(
-                        "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition-all duration-150",
+                        "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors",
                         payMode === m.label
-                          ? "border-primary bg-primary/10 text-primary dark:bg-primary/20"
-                          : "border-border hover:bg-secondary/50"
+                          ? "border-primary bg-indigo-50 text-primary"
+                          : "border-border hover:bg-secondary/60"
                       )}
                     >
                       <m.icon className="h-4 w-4 shrink-0" />
@@ -653,13 +564,9 @@ export default function PaymentsPage() {
                   {payError}
                 </p>
               )}
-              <Button className="w-full" size="default" onClick={submitCollect}>
+              <Button className="w-full" onClick={submitCollect}>
                 Confirm & generate receipt
               </Button>
-              <p className="text-center text-caption text-muted-foreground">
-                Mock collection — updates invoice, receipt, dashboard & audit
-                log
-              </p>
             </CardContent>
           </Card>
         </div>

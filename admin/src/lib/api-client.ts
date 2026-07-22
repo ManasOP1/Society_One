@@ -260,10 +260,23 @@ export const authApi = {
   me: () => apiFetch<any>("/me"),
 };
 
+/** Nest list endpoints return either T[] or { data: T[], meta } when limit/page is set. */
+export function asListRows<T = unknown>(payload: unknown): T[] {
+  if (Array.isArray(payload)) return payload as T[];
+  if (
+    payload &&
+    typeof payload === "object" &&
+    Array.isArray((payload as { data?: unknown }).data)
+  ) {
+    return (payload as { data: T[] }).data;
+  }
+  return [];
+}
+
 export const membersApi = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  list: (societyId?: string) =>
-    apiFetch<any[]>(`/members${qs({ societyId, limit: "200" })}`),
+  list: async (societyId?: string) =>
+    asListRows(await apiFetch(`/members${qs({ societyId, limit: "200" })}`)),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   create: (input: Record<string, unknown>, societyId?: string) =>
     apiFetch<any>(`/members${qs({ societyId })}`, { method: "POST", body: JSON.stringify(input) }),
@@ -298,9 +311,8 @@ export const settingsApi = {
 };
 
 export const invoicesApi = {
-  list: (params: { societyId?: string; status?: string; month?: string } = {}) =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    apiFetch<any[]>(`/invoices${qs({ ...params, limit: "200" })}`),
+  list: async (params: { societyId?: string; status?: string; month?: string } = {}) =>
+    asListRows(await apiFetch(`/invoices${qs({ ...params, limit: "200" })}`)),
   byNo: (invoiceNo: string, societyId?: string) =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     apiFetch<any>(`/invoices/${encodeURIComponent(invoiceNo)}${qs({ societyId })}`),
@@ -317,9 +329,8 @@ export const invoicesApi = {
 };
 
 export const receiptsApi = {
-  list: (params: { societyId?: string; month?: string } = {}) =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    apiFetch<any[]>(`/receipts${qs({ ...params, limit: "200" })}`),
+  list: async (params: { societyId?: string; month?: string } = {}) =>
+    asListRows(await apiFetch(`/receipts${qs({ ...params, limit: "200" })}`)),
   byNo: (receiptNo: string, societyId?: string) =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     apiFetch<any>(`/receipts/${encodeURIComponent(receiptNo)}${qs({ societyId })}`),
