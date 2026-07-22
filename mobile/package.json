@@ -57,10 +57,5 @@
     "lint": "expo lint",
     "test": "jest"
   },
-  "private": true,
-  "overrides": {
-    "@emnapi/core": "1.11.2",
-    "@emnapi/runtime": "1.11.2",
-    "@emnapi/wasi-threads": "1.2.2"
-  }
+  "private": true
 }

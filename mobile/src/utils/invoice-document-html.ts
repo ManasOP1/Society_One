@@ -120,25 +120,44 @@ export function invoiceDocumentHtml(
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2, user-scalable=yes" />
   <style>
     * { box-sizing: border-box; }
-    body { margin: 0; padding: 8px; background: #fff; color: #000; font-family: ${FONT}; font-size: 13px; line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    table { border-collapse: collapse; width: 100%; font-family: ${FONT}; }
+    html, body { margin: 0; padding: 0; background: #fff; color: #000; }
+    body {
+      padding: 6px;
+      font-family: ${FONT};
+      font-size: 12px;
+      line-height: 1.35;
+      -webkit-text-size-adjust: 100%;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    table { border-collapse: collapse; width: 100%; table-layout: fixed; font-family: ${FONT}; }
+    td { word-break: break-word; overflow-wrap: anywhere; white-space: normal; }
+    .nowrap { white-space: nowrap; }
+    .doc { width: 100%; max-width: 820px; margin: 0 auto; background: #fff; }
+    @media (max-width: 420px) {
+      body { font-size: 10px; padding: 4px; }
+      .logo-cell { width: 72px !important; }
+      .logo-cell img, .logo-cell > div { width: 56px !important; height: 56px !important; }
+      .society-title { font-size: 13px !important; }
+      .meta-label { font-size: 9.5px !important; }
+    }
   </style>
 </head>
 <body>
-  <div style="max-width:820px;margin:0 auto;background:#fff;font-family:${FONT};">
+  <div class="doc">
     <table style="border:2px solid #000;">
       <tr>
         <td style="border-bottom:1px solid #000;padding:0;">
           <table style="width:100%;">
             <tr>
-              <td style="width:110px;border-right:1px solid #000;padding:8px;text-align:center;vertical-align:middle;">${logoHtml}</td>
-              <td style="padding:8px;text-align:center;vertical-align:middle;">
-                <div style="font-size:17px;font-weight:bold;text-transform:uppercase;text-decoration:underline;">${esc(societyName)}</div>
-                <div style="margin-top:4px;font-size:12.5px;font-weight:bold;">Reg. No.: ${esc(registrationNo)}. Year: ${regYear} Date: ${dmy(invoice.issueDate)}</div>
-                <div style="margin-top:2px;font-size:12.5px;font-weight:bold;">${esc(societyAddress)}</div>
+              <td class="logo-cell" style="width:96px;border-right:1px solid #000;padding:6px;text-align:center;vertical-align:middle;">${logoHtml}</td>
+              <td style="padding:6px;text-align:center;vertical-align:middle;">
+                <div class="society-title" style="font-size:15px;font-weight:bold;text-transform:uppercase;text-decoration:underline;">${esc(societyName)}</div>
+                <div style="margin-top:4px;font-size:11px;font-weight:bold;">Reg. No.: ${esc(registrationNo)}. Year: ${regYear} Date: ${dmy(invoice.issueDate)}</div>
+                <div style="margin-top:2px;font-size:11px;font-weight:bold;">${esc(societyAddress)}</div>
               </td>
             </tr>
           </table>
@@ -151,21 +170,21 @@ export function invoiceDocumentHtml(
         <td style="border-bottom:1px solid #000;padding:0;">
           <table>
             <tr>
-              <td style="${cell('width:16%;font-weight:bold;border-left:0;border-top:0;')}">GSTIN :</td>
-              <td style="${cell('width:34%;text-align:center;border-top:0;')}">NA</td>
-              <td style="${cell('width:26%;font-weight:bold;border-top:0;')}">INVOICE DATE :</td>
-              <td style="${cell('width:24%;border-top:0;border-right:0;')}">${dmy(invoice.issueDate)}</td>
+              <td class="meta-label" style="${cell('width:18%;font-weight:bold;border-left:0;border-top:0;')}">GSTIN</td>
+              <td style="${cell('width:32%;text-align:center;border-top:0;')}">NA</td>
+              <td class="meta-label" style="${cell('width:25%;font-weight:bold;border-top:0;')}">INVOICE DATE</td>
+              <td class="nowrap" style="${cell('width:25%;border-top:0;border-right:0;')}">${dmy(invoice.issueDate)}</td>
             </tr>
             <tr>
-              <td style="${cell('font-weight:bold;border-left:0;')}">PAN No. :</td>
+              <td class="meta-label" style="${cell('font-weight:bold;border-left:0;')}">PAN No.</td>
               <td style="${cell('text-align:center;')}">${esc(panNumber)}</td>
-              <td style="${cell('font-weight:bold;')}">INVOICE NO. :</td>
-              <td style="${cell('border-right:0;')}">${esc(invoice.invoiceNo)}</td>
+              <td class="meta-label" style="${cell('font-weight:bold;')}">INVOICE NO.</td>
+              <td style="${cell('border-right:0;font-size:10.5px;')}">${esc(invoice.invoiceNo)}</td>
             </tr>
             <tr>
               <td colspan="2" style="${cell('font-weight:bold;border-left:0;')}">REVERSE CHARGE - N.A.</td>
-              <td style="${cell('font-weight:bold;')}">DUE DATE :</td>
-              <td style="${cell('border-right:0;')}">${dmy(invoice.dueDate)}</td>
+              <td class="meta-label" style="${cell('font-weight:bold;')}">DUE DATE</td>
+              <td class="nowrap" style="${cell('border-right:0;')}">${dmy(invoice.dueDate)}</td>
             </tr>
           </table>
         </td>

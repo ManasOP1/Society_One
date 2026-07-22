@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -13,19 +13,15 @@ import { Screen } from '@/components/ui/screen';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ui/states';
 import { Spacing } from '@/constants/theme';
-import { useAuth } from '@/context/auth';
 import { useInvoice, useSocietySettings } from '@/hooks/queries';
 import { useTheme } from '@/hooks/use-theme';
 import { invoiceDocumentHtml } from '@/utils/invoice-document-html';
-import { formatINR } from '@/utils/format';
+import { formatINR, formatMonth } from '@/utils/format';
 import { downloadPdf, sharePdf } from '@/utils/pdf';
 
 export default function InvoiceDetailScreen() {
   const { invoiceNo } = useLocalSearchParams<{ invoiceNo: string }>();
   const theme = useTheme();
-  const router = useRouter();
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
   const invoice = useInvoice(invoiceNo ?? '');
   const settings = useSocietySettings();
   const [sharing, setSharing] = useState(false);
@@ -88,17 +84,18 @@ export default function InvoiceDetailScreen() {
   }
 
   const inv = invoice.data;
-  const canPay = inv.outstanding > 0 && inv.status !== 'Cancelled';
 
   return (
     <Screen contentStyle={styles.screen}>
       <Card style={styles.summary}>
         <View style={styles.summaryTop}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <AppText variant="title">{inv.invoiceNo}</AppText>
-            <AppText variant="caption" color="textSecondary">
-              Payable {formatINR(inv.totalAmount)}
-              {inv.paidAmount > 0 ? ` · Outstanding ${formatINR(inv.outstanding)}` : ''}
+          <View style={styles.summaryText}>
+            <AppText variant="bodySemi" numberOfLines={2} style={styles.invoiceNo}>
+              {inv.invoiceNo}
+            </AppText>
+            <AppText variant="caption" color="textSecondary" numberOfLines={2}>
+              {formatMonth(inv.month)} · {formatINR(inv.totalAmount)}
+              {inv.outstanding > 0 ? ` · Due ${formatINR(inv.outstanding)}` : ''}
             </AppText>
           </View>
           <StatusBadge status={inv.status} />
@@ -113,42 +110,38 @@ export default function InvoiceDetailScreen() {
         </AppText>
       ) : null}
 
-      <View style={styles.actions}>
-        {canPay ? (
-          <Button
-            title={`${isAdmin ? 'Record payment' : 'Pay'} ${formatINR(inv.outstanding)}`}
-            icon={<Feather name="zap" size={18} color={theme.onPrimary} />}
-            onPress={() => router.push({ pathname: '/pay/[invoiceNo]', params: { invoiceNo: inv.invoiceNo } })}
-          />
-        ) : null}
-        <View style={styles.row}>
-          <Button
-            title="Download"
-            variant="outline"
-            style={styles.half}
-            loading={downloading}
-            icon={<Feather name="download" size={18} color={theme.primary} />}
-            onPress={handleDownload}
-          />
-          <Button
-            title="Share"
-            variant="outline"
-            style={styles.half}
-            loading={sharing}
-            icon={<Feather name="share-2" size={18} color={theme.primary} />}
-            onPress={handleShare}
-          />
-        </View>
+      <View style={styles.row}>
+        <Button
+          title="Download"
+          variant="secondary"
+          style={styles.half}
+          loading={downloading}
+          icon={<Feather name="download" size={18} color={theme.onAccent} />}
+          onPress={handleDownload}
+        />
+        <Button
+          title="Share"
+          variant="outline"
+          style={styles.half}
+          loading={sharing}
+          icon={<Feather name="share-2" size={18} color={theme.text} />}
+          onPress={handleShare}
+        />
       </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { gap: Spacing.two },
+  screen: { gap: Spacing.two, paddingBottom: Spacing.three },
   summary: { gap: Spacing.one },
-  summaryTop: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.one },
-  actions: { gap: Spacing.onehalf },
-  row: { flexDirection: 'row', gap: Spacing.one },
-  half: { flex: 1 },
+  summaryTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.one,
+  },
+  summaryText: { flex: 1, minWidth: 0, gap: 2, paddingRight: Spacing.one },
+  invoiceNo: { flexShrink: 1 },
+  row: { flexDirection: 'row', gap: Spacing.one, width: '100%' },
+  half: { flex: 1, minWidth: 0 },
 });

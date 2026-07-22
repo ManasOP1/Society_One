@@ -11,7 +11,8 @@ type Props = {
  */
 export function InvoiceDocumentView({ html, style }: Props) {
   const { width, height } = useWindowDimensions();
-  const docHeight = Math.max(480, Math.min(height * 0.62, 920));
+  const frameWidth = Math.max(280, width - 32);
+  const docHeight = Math.max(420, Math.min(Math.round(height * 0.58), 780));
 
   if (Platform.OS === 'web') {
     const Iframe = 'iframe' as unknown as React.ComponentType<{
@@ -20,7 +21,7 @@ export function InvoiceDocumentView({ html, style }: Props) {
       style: React.CSSProperties;
     }>;
     return (
-      <View style={[styles.frame, { minHeight: docHeight }, style]}>
+      <View style={[styles.frame, { minHeight: docHeight, width: frameWidth }, style]}>
         <Iframe
           srcDoc={html}
           title="Document"
@@ -31,16 +32,19 @@ export function InvoiceDocumentView({ html, style }: Props) {
   }
 
   return (
-    <View style={[styles.frame, { minHeight: docHeight, width: width - 32 }, style]}>
+    <View style={[styles.frame, { minHeight: docHeight, width: frameWidth }, style]}>
       <WebView
         originWhitelist={['*']}
         source={{ html }}
         scrollEnabled
-        showsVerticalScrollIndicator={false}
-        style={[styles.webview, { minHeight: docHeight }]}
+        showsVerticalScrollIndicator
+        showsHorizontalScrollIndicator={false}
+        style={[styles.webview, { minHeight: docHeight, width: frameWidth }]}
         nestedScrollEnabled
         scalesPageToFit
-        setBuiltInZoomControls={false}
+        setBuiltInZoomControls
+        setDisplayZoomControls={false}
+        androidLayerType="hardware"
       />
     </View>
   );
@@ -48,11 +52,13 @@ export function InvoiceDocumentView({ html, style }: Props) {
 
 const styles = StyleSheet.create({
   frame: {
-    width: '100%',
+    maxWidth: '100%',
     backgroundColor: '#fff',
     borderRadius: 12,
     overflow: 'hidden',
     alignSelf: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E2E8F0',
   },
   webview: {
     flex: 1,

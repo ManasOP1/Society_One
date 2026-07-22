@@ -88,9 +88,11 @@ export default function ReceiptDetailScreen() {
     <Screen contentStyle={styles.screen}>
       <Card style={styles.summary}>
         <View style={styles.summaryTop}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <AppText variant="title">{rcpt.receiptNo}</AppText>
-            <AppText variant="caption" color="textSecondary">
+          <View style={styles.summaryText}>
+            <AppText variant="bodySemi" numberOfLines={2}>
+              {rcpt.receiptNo}
+            </AppText>
+            <AppText variant="caption" color="textSecondary" numberOfLines={2}>
               {rcpt.invoiceNo} · {formatINR(rcpt.totalPaid)}
             </AppText>
           </View>
@@ -109,10 +111,10 @@ export default function ReceiptDetailScreen() {
       <View style={styles.row}>
         <Button
           title="Download"
-          variant="outline"
+          variant="secondary"
           style={styles.half}
           loading={downloading}
-          icon={<Feather name="download" size={18} color={theme.primary} />}
+          icon={<Feather name="download" size={18} color={theme.onAccent} />}
           onPress={handleDownload}
         />
         <Button
@@ -120,7 +122,7 @@ export default function ReceiptDetailScreen() {
           variant="outline"
           style={styles.half}
           loading={sharing}
-          icon={<Feather name="share-2" size={18} color={theme.primary} />}
+          icon={<Feather name="share-2" size={18} color={theme.text} />}
           onPress={handleShare}
         />
       </View>
@@ -129,9 +131,10 @@ export default function ReceiptDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { gap: Spacing.two },
+  screen: { gap: Spacing.two, paddingBottom: Spacing.three },
   summary: { gap: Spacing.one },
   summaryTop: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.one },
-  row: { flexDirection: 'row', gap: Spacing.one },
-  half: { flex: 1 },
+  summaryText: { flex: 1, minWidth: 0, gap: 2, paddingRight: Spacing.one },
+  row: { flexDirection: 'row', gap: Spacing.one, width: '100%' },
+  half: { flex: 1, minWidth: 0 },
 });
