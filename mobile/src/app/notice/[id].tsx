@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
+import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { apiErrorMessage } from '@/api/client';
@@ -12,15 +13,21 @@ import { ErrorState } from '@/components/ui/states';
 import { Radius, Spacing } from '@/constants/theme';
 import { useNotice } from '@/hooks/queries';
 import { useTheme } from '@/hooks/use-theme';
+import { useUnreadNotifications } from '@/hooks/use-unread-notifications';
 import { formatDate } from '@/utils/format';
 
 export default function NoticeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
   const notice = useNotice(id ?? '');
+  const { markRead } = useUnreadNotifications();
   const retryNotice = () => {
     void notice.refetch();
   };
+
+  useEffect(() => {
+    if (id) void markRead(id);
+  }, [id, markRead]);
 
   if (notice.isPending) {
     return (

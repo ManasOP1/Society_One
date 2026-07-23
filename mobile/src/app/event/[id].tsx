@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
+import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { apiErrorMessage } from '@/api/client';
@@ -12,14 +13,20 @@ import { ErrorState } from '@/components/ui/states';
 import { Radius, Spacing } from '@/constants/theme';
 import { useEvent } from '@/hooks/queries';
 import { useTheme } from '@/hooks/use-theme';
+import { useUnreadNotifications } from '@/hooks/use-unread-notifications';
 import { formatDate } from '@/utils/format';
 
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const event = useEvent(id ?? '');
+  const { markRead } = useUnreadNotifications();
   const retryEvent = () => {
     void event.refetch();
   };
+
+  useEffect(() => {
+    if (id) void markRead(id);
+  }, [id, markRead]);
 
   if (event.isPending) {
     return (

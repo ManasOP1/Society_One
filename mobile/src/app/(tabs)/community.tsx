@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { Link } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { apiErrorMessage } from '@/api/client';
@@ -17,6 +18,7 @@ import { Radius, Spacing } from '@/constants/theme';
 import { useEvents, useNotices } from '@/hooks/queries';
 import { isInitialLoad } from '@/hooks/query-ui';
 import { useTheme } from '@/hooks/use-theme';
+import { useUnreadNotifications } from '@/hooks/use-unread-notifications';
 import { formatDate, parseLocalDate } from '@/utils/format';
 
 const TABS = ['Notices', 'Events'] as const;
@@ -25,6 +27,17 @@ type Tab = (typeof TABS)[number];
 export default function CommunityScreen() {
   const [tab, setTab] = useState<Tab>('Notices');
   const [search, setSearch] = useState('');
+  const { markAllRead } = useUnreadNotifications();
+
+  // Leaving Community after viewing = notifications read → clear bell badge.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        void markAllRead();
+      };
+    }, [markAllRead]),
+  );
+
   const props = { tab, setTab, search, setSearch };
   return tab === 'Notices' ? <NoticesTab {...props} /> : <EventsTab {...props} />;
 }
@@ -55,6 +68,7 @@ function matches(search: string, ...fields: string[]) {
 
 function NoticesTab(props: HeaderProps) {
   const notices = useNotices();
+  const { isUnread } = useUnreadNotifications();
   const filtered = useMemo(
     () => (notices.data ?? []).filter((n) => matches(props.search, n.title, n.body)),
     [notices.data, props.search]
@@ -75,7 +89,7 @@ function NoticesTab(props: HeaderProps) {
       ) : (
         <View style={{ gap: Spacing.onehalf }}>
           {filtered.map((notice) => (
-            <NoticeRow key={notice.id} notice={notice} />
+            <NoticeRow key={notice.id} notice={notice} unread={isUnread(notice.id)} />
           ))}
         </View>
       )}
@@ -83,7 +97,7 @@ function NoticesTab(props: HeaderProps) {
   );
 }
 
-function NoticeRow({ notice }: { notice: SocietyNotice }) {
+function NoticeRow({ notice, unread }: { notice: SocietyNotice; unread: boolean }) {
   const theme = useTheme();
   return (
     <Link href={{ pathname: '/notice/[id]', params: { id: notice.id } }} asChild>
@@ -92,6 +106,7 @@ function NoticeRow({ notice }: { notice: SocietyNotice }) {
           <View style={styles.cardHeader}>
             <View style={[styles.iconCircle, { backgroundColor: theme.cardMuted }]}>
               <Feather name="bell" size={18} color={theme.text} />
+              {unread ? <View style={[styles.unreadDot, { backgroundColor: theme.error }]} /> : null}
             </View>
             <View style={{ flex: 1, gap: 1 }}>
               <AppText variant="bodySemi" numberOfLines={1}>
@@ -103,6 +118,8 @@ function NoticeRow({ notice }: { notice: SocietyNotice }) {
             </View>
             {notice.pinned ? (
               <OutlineBadge label="Pinned" icon="star" color={theme.warning} />
+            ) : unread ? (
+              <OutlineBadge label="New" color={theme.error} />
             ) : (
               <OutlineBadge label="Published" />
             )}
@@ -133,6 +150,7 @@ function NoticeRow({ notice }: { notice: SocietyNotice }) {
 
 function EventsTab(props: HeaderProps) {
   const events = useEvents();
+  const { isUnread } = useUnreadNotifications();
   const filtered = useMemo(
     () => (events.data ?? []).filter((e) => matches(props.search, e.title, e.location, e.description)),
     [events.data, props.search]
@@ -153,7 +171,7 @@ function EventsTab(props: HeaderProps) {
       ) : (
         <View style={{ gap: Spacing.onehalf }}>
           {filtered.map((event) => (
-            <EventRow key={event.id} event={event} />
+            <EventRow key={event.id} event={event} unread={isUnread(event.id)} />
           ))}
         </View>
       )}
@@ -161,7 +179,7 @@ function EventsTab(props: HeaderProps) {
   );
 }
 
-function EventRow({ event }: { event: SocietyEvent }) {
+function EventRow({ event, unread }: { event: SocietyEvent; unread: boolean }) {
   const theme = useTheme();
   const date = parseLocalDate(event.date);
   const dayLabel = Number.isNaN(date.getTime()) ? '—' : String(date.getDate());
@@ -181,6 +199,7 @@ function EventRow({ event }: { event: SocietyEvent }) {
               <AppText variant="caption" style={{ color: done ? theme.textSecondary : theme.accent }}>
                 {monthLabel}
               </AppText>
+              {unread ? <View style={[styles.unreadDot, { backgroundColor: theme.error }]} /> : null}
             </View>
             <View style={{ flex: 1, gap: 2 }}>
               <AppText variant="bodySemi" numberOfLines={1}>
@@ -194,9 +213,25 @@ function EventRow({ event }: { event: SocietyEvent }) {
               </View>
             </View>
             <OutlineBadge
-              label={event.status}
-              icon={done ? 'check-circle' : event.status === 'Ongoing' ? 'zap' : 'clock'}
-              color={done ? undefined : event.status === 'Ongoing' ? theme.success : theme.text}
+              label={unread ? 'New' : event.status}
+              icon={
+                unread
+                  ? 'bell'
+                  : done
+                    ? 'check-circle'
+                    : event.status === 'Ongoing'
+                      ? 'zap'
+                      : 'clock'
+              }
+              color={
+                unread
+                  ? theme.error
+                  : done
+                    ? undefined
+                    : event.status === 'Ongoing'
+                      ? theme.success
+                      : theme.text
+              }
             />
           </View>
           <View style={styles.cardFooter}>
@@ -226,6 +261,16 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  unreadDot: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
   },
   dateBox: {
     width: 52,

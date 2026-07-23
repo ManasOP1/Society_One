@@ -30,6 +30,7 @@ import { useAuth } from '@/context/auth';
 import { useDashboard, useSocietySettings } from '@/hooks/queries';
 import { isInitialLoad } from '@/hooks/query-ui';
 import { useTheme } from '@/hooks/use-theme';
+import { useUnreadNotifications } from '@/hooks/use-unread-notifications';
 import { formatDate, formatINR, parseLocalDate } from '@/utils/format';
 
 function eventDateChip(iso: string): { day: string; month: string } {
@@ -45,6 +46,7 @@ export default function DashboardScreen() {
   const { user } = useAuth();
   const dashboard = useDashboard();
   const settings = useSocietySettings();
+  const { unreadCount } = useUnreadNotifications();
   const [search, setSearch] = useState('');
   const isAdmin = user?.role === 'admin';
 
@@ -73,7 +75,12 @@ export default function DashboardScreen() {
                 </AppText>
               </View>
               <CircleIconButton icon="message-circle" label="Community" onPress={() => router.push('/community')} />
-              <CircleIconButton icon="bell" label="Notifications" dot onPress={() => router.push('/community')} />
+              <CircleIconButton
+                icon="bell"
+                label="Notifications"
+                badgeCount={unreadCount}
+                onPress={() => router.push('/community')}
+              />
             </View>
 
             {/* Search — submits into Payments with the query applied */}
@@ -276,23 +283,29 @@ export default function DashboardScreen() {
 function CircleIconButton({
   icon,
   label,
-  dot,
+  badgeCount = 0,
   onPress,
 }: {
   icon: keyof typeof Feather.glyphMap;
   label: string;
-  dot?: boolean;
+  badgeCount?: number;
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const showBadge = badgeCount > 0;
+  const badgeLabel = badgeCount > 9 ? '9+' : String(badgeCount);
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={showBadge ? `${label}, ${badgeCount} unread` : label}
       onPress={onPress}
       style={[styles.circleBtn, { backgroundColor: theme.cardMuted, borderColor: theme.border }]}>
       <Feather name={icon} size={19} color={theme.text} />
-      {dot ? <View style={[styles.dot, { backgroundColor: theme.error }]} /> : null}
+      {showBadge ? (
+        <View style={[styles.badge, { backgroundColor: theme.error }]}>
+          <AppText style={styles.badgeText}>{badgeLabel}</AppText>
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -424,6 +437,25 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  badge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontFamily: Fonts.bold,
+    lineHeight: 12,
   },
   chipRow: { flexDirection: 'row', gap: Spacing.onehalf },
   statChip: {
