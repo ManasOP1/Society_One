@@ -6,11 +6,22 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "node": "22.14.0",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://admin-society-one.onrender.com/api/v1",
+        "EXPO_PUBLIC_USE_MOCK": "false"
+      }
     },
     "preview": {
       "distribution": "internal",
       "node": "22.14.0",
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://admin-society-one.onrender.com/api/v1",
         "EXPO_PUBLIC_USE_MOCK": "false"
@@ -18,6 +29,10 @@
     },
     "production": {
       "autoIncrement": true,
+      "node": "22.14.0",
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://admin-society-one.onrender.com/api/v1",
         "EXPO_PUBLIC_USE_MOCK": "false"

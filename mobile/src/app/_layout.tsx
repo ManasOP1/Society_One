@@ -5,7 +5,7 @@ import {
   Inter_800ExtraBold,
   useFonts,
 } from '@expo-google-fonts/inter';
-import { QueryClient, QueryClientProvider, keepPreviousData } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -34,8 +34,7 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       retry: 2,
       retryDelay: (attempt) => Math.min(1_000 * 2 ** attempt, 5_000),
-      /** Keep current UI visible while refetching — no flash to skeleton. */
-      placeholderData: keepPreviousData,
+      // No global keepPreviousData — detail routes must not briefly show the prior entity.
     },
   },
 });

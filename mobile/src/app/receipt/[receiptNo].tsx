@@ -23,6 +23,13 @@ export default function ReceiptDetailScreen() {
   const theme = useTheme();
   const receipt = useReceipt(receiptNo ?? '');
   const settings = useSocietySettings();
+  const retryReceipt = () => {
+    void receipt.refetch();
+  };
+  const retryAll = () => {
+    void receipt.refetch();
+    void settings.refetch();
+  };
   const [sharing, setSharing] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -73,16 +80,20 @@ export default function ReceiptDetailScreen() {
       <Screen scroll={false}>
         <ErrorState
           message={apiErrorMessage(receipt.error ?? settings.error)}
-          onRetry={() => {
-            receipt.refetch();
-            settings.refetch();
-          }}
+          onRetry={retryAll}
         />
       </Screen>
     );
   }
 
   const rcpt = receipt.data;
+  if (!rcpt) {
+    return (
+      <Screen scroll={false}>
+        <ErrorState message="Receipt not found" onRetry={retryReceipt} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen contentStyle={styles.screen}>

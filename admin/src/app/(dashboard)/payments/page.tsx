@@ -79,7 +79,10 @@ export default function PaymentsPage() {
   const availableYears = useMemo(() => {
     const values = [
       ...invoices.map((invoice) => invoice.year),
-      ...allReceipts.map((receipt) => Number(receipt.month.slice(0, 4))),
+      ...allReceipts.map((receipt) => {
+        const m = receipt.month ?? "";
+        return /^\d{4}/.test(m) ? Number(m.slice(0, 4)) : NaN;
+      }),
     ].filter(Number.isFinite);
     return [...new Set(values)].sort((a, b) => b - a);
   }, [invoices, allReceipts]);

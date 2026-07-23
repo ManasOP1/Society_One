@@ -32,6 +32,9 @@ function dmy(iso: string): string {
 
 function billPeriod(month: string) {
   const [y, m] = month.split('-').map(Number);
+  if (!y || !m || m < 1 || m > 12) {
+    return { from: '—', to: '—', days: 0 };
+  }
   const days = new Date(y, m, 0).getDate();
   const mm = String(m).padStart(2, '0');
   return {

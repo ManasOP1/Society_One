@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useLiveRefresh } from "@/hooks/use-live-refresh";
 import { invoiceService } from "@/services/invoice.service";
 import { subscribeLiveData } from "@/lib/live-data-events";
-import type { Invoice, InvoiceStatus } from "@/types";
+import type { Invoice } from "@/types";
 
 export function useInvoices(societyId: string | undefined) {
   const [invoices, setInvoices] = useState<Invoice[]>(() =>
@@ -54,29 +54,6 @@ export function useInvoices(societyId: string | undefined) {
     [societyId, syncFromCache]
   );
 
-  const setStatus = useCallback(
-    (invoiceNo: string, status: InvoiceStatus, actor: string, paidAmount?: number) => {
-      const updated = invoiceService.updateStatus(
-        invoiceNo,
-        status,
-        actor,
-        paidAmount
-      );
-      syncFromCache();
-      return updated;
-    },
-    [syncFromCache]
-  );
-
-  const duplicate = useCallback(
-    (invoiceNo: string, actor: string) => {
-      const copy = invoiceService.duplicate(invoiceNo, actor);
-      syncFromCache();
-      return copy;
-    },
-    [syncFromCache]
-  );
-
   const remove = useCallback(
     async (invoiceNo: string, actor: string) => {
       if (!societyId) return false;
@@ -100,8 +77,6 @@ export function useInvoices(societyId: string | undefined) {
     loading,
     refresh,
     generateMonthly,
-    setStatus,
-    duplicate,
     remove,
     stats,
   };

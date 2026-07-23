@@ -18,6 +18,9 @@ export default function NoticeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
   const notice = useNotice(id ?? '');
+  const retryNotice = () => {
+    void notice.refetch();
+  };
 
   if (notice.isPending) {
     return (
@@ -32,12 +35,19 @@ export default function NoticeDetailScreen() {
   if (notice.isError) {
     return (
       <Screen scroll={false}>
-        <ErrorState message={apiErrorMessage(notice.error)} onRetry={() => notice.refetch()} />
+        <ErrorState message={apiErrorMessage(notice.error)} onRetry={retryNotice} />
       </Screen>
     );
   }
 
   const n = notice.data;
+  if (!n) {
+    return (
+      <Screen scroll={false}>
+        <ErrorState message="Notice not found" onRetry={retryNotice} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen>

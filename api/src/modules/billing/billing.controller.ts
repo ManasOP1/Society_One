@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { InvoiceStatus, Role } from '../../common/types/roles';
 import {
   CurrentUser,
+  Public,
   Roles,
   type AuthUser,
 } from '../../common/decorators/auth.decorators';
@@ -25,6 +26,19 @@ const GenerateMonthlySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/, 'month must be YYYY-MM'),
 });
 class GenerateMonthlyDto extends createZodDto(GenerateMonthlySchema) {}
+
+@ApiTags('Public')
+@Controller()
+export class PublicBillingController {
+  constructor(private readonly billing: BillingService) {}
+
+  /** Shareable invoice page — no auth. */
+  @Public()
+  @Get('public/invoices/:invoiceNo')
+  getPublic(@Param('invoiceNo') invoiceNo: string) {
+    return this.billing.getPublicByInvoiceNo(invoiceNo);
+  }
+}
 
 @ApiTags('Invoices')
 @ApiBearerAuth()

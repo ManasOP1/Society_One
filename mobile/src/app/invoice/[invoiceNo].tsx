@@ -24,6 +24,13 @@ export default function InvoiceDetailScreen() {
   const theme = useTheme();
   const invoice = useInvoice(invoiceNo ?? '');
   const settings = useSocietySettings();
+  const retryInvoice = () => {
+    void invoice.refetch();
+  };
+  const retryAll = () => {
+    void invoice.refetch();
+    void settings.refetch();
+  };
   const [sharing, setSharing] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -74,16 +81,20 @@ export default function InvoiceDetailScreen() {
       <Screen scroll={false}>
         <ErrorState
           message={apiErrorMessage(invoice.error ?? settings.error)}
-          onRetry={() => {
-            invoice.refetch();
-            settings.refetch();
-          }}
+          onRetry={retryAll}
         />
       </Screen>
     );
   }
 
   const inv = invoice.data;
+  if (!inv) {
+    return (
+      <Screen scroll={false}>
+        <ErrorState message="Invoice not found" onRetry={retryInvoice} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen contentStyle={styles.screen}>

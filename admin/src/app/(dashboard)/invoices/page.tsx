@@ -5,11 +5,7 @@ import Link from "next/link";
 import {
   Download,
   Eye,
-  Copy,
   CheckCircle2,
-  CircleDollarSign,
-  Clock,
-  XCircle,
   Trash2,
   MessageCircle,
   Plus,
@@ -51,8 +47,6 @@ export default function InvoicesPage() {
   const {
     invoices,
     generateMonthly,
-    setStatus,
-    duplicate,
     remove,
     refresh,
   } = useInvoices(society?.id);
@@ -266,7 +260,19 @@ export default function InvoicesPage() {
                         variant="ghost"
                         size="icon-sm"
                         title="Preview"
-                        onClick={() => setSelected(inv)}
+                        onClick={() => {
+                          void (async () => {
+                            try {
+                              const full = await invoiceService.fetchByNo(
+                                inv.invoiceNo,
+                                society?.id
+                              );
+                              setSelected(full);
+                            } catch {
+                              setSelected(inv);
+                            }
+                          })();
+                        }}
                       >
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
@@ -281,28 +287,16 @@ export default function InvoicesPage() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        title="Duplicate"
-                        onClick={() => {
-                          duplicate(inv.invoiceNo, actor);
-                          flash(`Duplicated ${inv.invoiceNo}`);
-                        }}
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
                         title="Mark Paid"
                         onClick={async () => {
                           try {
-                            if (inv.outstanding > 0) {
-                              await paymentService.markFullyPaid(inv.invoiceNo, actor, "Cash");
-                              await refresh();
-                              flash(`Marked paid ${inv.invoiceNo}`);
-                            } else {
-                              setStatus(inv.invoiceNo, "Paid", actor);
-                              flash(`Marked paid ${inv.invoiceNo}`);
+                            if (inv.outstanding <= 0) {
+                              flash(`${inv.invoiceNo} is already paid`);
+                              return;
                             }
+                            await paymentService.markFullyPaid(inv.invoiceNo, actor, "Cash");
+                            await refresh();
+                            flash(`Marked paid ${inv.invoiceNo}`);
                           } catch (e) {
                             flash(e instanceof Error ? e.message : "Payment failed");
                           }
@@ -313,51 +307,18 @@ export default function InvoicesPage() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        title="Mark Partial"
-                        onClick={() => {
-                          setStatus(inv.invoiceNo, "Partial", actor);
-                          flash(`Marked partial ${inv.invoiceNo}`);
-                        }}
-                      >
-                        <CircleDollarSign className="h-3.5 w-3.5 text-sky-600" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        title="Mark Pending"
-                        onClick={() => {
-                          setStatus(inv.invoiceNo, "Pending", actor);
-                          flash(`Marked pending ${inv.invoiceNo}`);
-                        }}
-                      >
-                        <Clock className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        title="Cancel"
-                        onClick={() => {
-                          setStatus(inv.invoiceNo, "Cancelled", actor);
-                          flash(`Cancelled ${inv.invoiceNo}`);
-                        }}
-                      >
-                        <XCircle className="h-3.5 w-3.5 text-orange-500" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
                         className="text-destructive"
-                        title="Delete"
+                        title="Cancel / Delete"
                         onClick={() => {
-                          if (confirm(`Delete ${inv.invoiceNo}?`)) {
+                          if (confirm(`Cancel and remove ${inv.invoiceNo} from the ledger?`)) {
                             void remove(inv.invoiceNo, actor).then((ok) => {
                               if (ok) {
-                                flash(`Deleted ${inv.invoiceNo}`);
+                                flash(`Cancelled ${inv.invoiceNo}`);
                                 if (selected?.invoiceNo === inv.invoiceNo) {
                                   setSelected(null);
                                 }
                               } else {
-                                flash(`Could not delete ${inv.invoiceNo}`);
+                                flash(`Could not cancel ${inv.invoiceNo}`);
                               }
                             });
                           }

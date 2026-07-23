@@ -17,6 +17,9 @@ import { formatDate } from '@/utils/format';
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const event = useEvent(id ?? '');
+  const retryEvent = () => {
+    void event.refetch();
+  };
 
   if (event.isPending) {
     return (
@@ -31,12 +34,20 @@ export default function EventDetailScreen() {
   if (event.isError) {
     return (
       <Screen scroll={false}>
-        <ErrorState message={apiErrorMessage(event.error)} onRetry={() => event.refetch()} />
+        <ErrorState message={apiErrorMessage(event.error)} onRetry={retryEvent} />
       </Screen>
     );
   }
 
   const e = event.data;
+  if (!e) {
+    return (
+      <Screen scroll={false}>
+        <ErrorState message="Event not found" onRetry={retryEvent} />
+      </Screen>
+    );
+  }
+
   const done = e.status === 'Completed';
 
   return (

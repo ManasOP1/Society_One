@@ -12,7 +12,7 @@
  *   if the refresh fails, the session-expired listener signs the user out.
  */
 
-import axios, { AxiosError, isAxiosError, type InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 
 import { mockAdapter } from '@/api/mock/adapter';
 import { tokenStore } from '@/api/token-store';
@@ -108,14 +108,4 @@ api.interceptors.response.use(
   }
 );
 
-/** Human-readable message from any API error. */
-export function apiErrorMessage(error: unknown): string {
-  if (isAxiosError(error)) {
-    const data = error.response?.data as { message?: string } | undefined;
-    if (data?.message) return data.message;
-    if (error.code === 'ECONNABORTED') return 'The request timed out. Please try again.';
-    if (!error.response) return 'Cannot reach the server. Check your connection.';
-  }
-  if (error instanceof Error && error.message) return error.message;
-  return 'Something went wrong. Please try again.';
-}
+export { apiErrorMessage } from '@/api/error-message';

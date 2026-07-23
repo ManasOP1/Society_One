@@ -316,6 +316,10 @@ export const invoicesApi = {
   byNo: (invoiceNo: string, societyId?: string) =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     apiFetch<any>(`/invoices/${encodeURIComponent(invoiceNo)}${qs({ societyId })}`),
+  /** Unauthenticated shareable invoice (public link). */
+  publicByNo: (invoiceNo: string) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    apiFetch<any>(`/public/invoices/${encodeURIComponent(invoiceNo)}`, { auth: false }),
   generateMonthly: (month: string, societyId?: string) =>
     apiFetch<{ month: string; generated: number; skipped: number; invoices: unknown[] }>(
       `/invoices/generate-monthly${qs({ societyId })}`,
@@ -343,7 +347,7 @@ export const paymentsApi = {
 };
 
 export const communityApi = {
-  notices: () => apiFetch<any[]>("/notices"),
+  notices: async () => asListRows(await apiFetch("/notices")),
   createNotice: (input: Record<string, unknown>) =>
     apiFetch<any>("/notices", { method: "POST", body: JSON.stringify(input) }),
   updateNotice: (id: string, input: Record<string, unknown>) =>
@@ -353,7 +357,7 @@ export const communityApi = {
     }),
   deleteNotice: (id: string) =>
     apiFetch<{ success: boolean }>(`/notices/${encodeURIComponent(id)}`, { method: "DELETE" }),
-  events: () => apiFetch<any[]>("/events"),
+  events: async () => asListRows(await apiFetch("/events")),
   createEvent: (input: Record<string, unknown>) =>
     apiFetch<any>("/events", { method: "POST", body: JSON.stringify(input) }),
   updateEvent: (id: string, input: Record<string, unknown>) =>
@@ -367,7 +371,8 @@ export const communityApi = {
 
 export const visitorsApi = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  list: (societyId?: string) => apiFetch<any[]>(`/visitors${qs({ societyId })}`),
+  list: async (societyId?: string) =>
+    asListRows(await apiFetch(`/visitors${qs({ societyId })}`)),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   create: (input: Record<string, unknown>, societyId?: string) =>
     apiFetch<any>(`/visitors${qs({ societyId })}`, { method: "POST", body: JSON.stringify(input) }),

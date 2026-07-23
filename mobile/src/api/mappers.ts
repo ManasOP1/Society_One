@@ -232,15 +232,18 @@ export function mapInvoice(row: Record<string, unknown>): Invoice {
 }
 
 export function mapReceipt(row: Record<string, unknown>): Receipt {
+  const invoice = row.invoice as Record<string, unknown> | undefined;
+  const flat = (invoice?.flat ?? row.flat) as Record<string, unknown> | undefined;
+  const wingObj = flat?.wing as Record<string, unknown> | undefined;
   return {
     id: str(row.id),
     receiptNo: str(row.receiptNo),
-    invoiceNo: str((row.invoice as Record<string, unknown> | undefined)?.invoiceNo ?? row.invoiceNo),
+    invoiceNo: str(invoice?.invoiceNo ?? row.invoiceNo),
     societyId: str(row.societyId),
     societyName: str(row.societyName),
     ownerName: str((row.member as Record<string, unknown> | undefined)?.ownerName ?? row.ownerName),
-    flatNo: str(row.flatNo),
-    wing: str(row.wing),
+    flatNo: str(row.flatNo ?? flat?.flatNo),
+    wing: str(row.wing ?? wingObj?.code),
     mobile: str(row.mobile),
     amount: num(row.amount),
     lateFee: num(row.lateFee),
@@ -292,7 +295,7 @@ export function mapVisitor(row: Record<string, unknown>): SocietyVisitor {
     id: str(row.id),
     societyId: str(row.societyId),
     name: str(row.name),
-    flat: str(row.flat),
+    flat: str(row.flat ?? row.flatLabel),
     purpose: str(row.purpose),
     vehicle: str(row.vehicle),
     expectedTime: str(row.expectedTime),

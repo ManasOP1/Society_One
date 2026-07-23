@@ -19,6 +19,7 @@ import {
   clearApiSession,
   apiErrorMessage,
   notifyDataUpdated,
+  ApiError,
   type ApiUser,
 } from "@/lib/api-client";
 import { LIVE_SYNC_DEBOUNCE_MS } from "@/constants/live-sync";
@@ -235,11 +236,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           membersLoadedFor.current = me.societyId;
           void loadSocietyData(me as ApiUser);
         }
-      } catch {
-        clearApiSession();
-        setUser(null);
-        setSociety(null);
-        setMembersState([]);
+      } catch (error) {
+        const authFailed =
+          error instanceof ApiError && (error.status === 401 || error.status === 403);
+        if (authFailed) {
+          clearApiSession();
+          setUser(null);
+          setSociety(null);
+          setMembersState([]);
+        } else {
+          // Keep optimistic session on network/5xx; hydrate from storage if present.
+          const cached = getStoredUser();
+          if (cached) setUser(cached);
+        }
         setIsLoading(false);
         setSessionReady(true);
       }

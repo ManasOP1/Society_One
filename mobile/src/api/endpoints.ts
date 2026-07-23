@@ -1,6 +1,7 @@
 /** Typed endpoint functions — the only place the app touches raw HTTP paths. */
 
 import { api, IS_MOCK_API } from '@/api/client';
+import { unwrapListPayload } from '@/api/list-payload';
 import {
   mapAuthUser,
   mapDashboard,
@@ -34,6 +35,8 @@ import {
   openRazorpayCheckout,
 } from '@/utils/razorpay-checkout';
 
+export { unwrapListPayload } from '@/api/list-payload';
+
 export type ResidentLoginInput = {
   societyId: string;
   wing: string;
@@ -43,13 +46,17 @@ export type ResidentLoginInput = {
 
 export const authApi = {
   societies: () =>
-    api.get<{ id: string; name: string }[]>('/auth/societies').then((r) => r.data),
+    api
+      .get<{ id: string; name: string }[] | { data: { id: string; name: string }[] }>('/auth/societies')
+      .then((r) => unwrapListPayload<{ id: string; name: string }>(r.data)),
   wings: (societyId: string) =>
     api
-      .get<{ id: string; code: string; name: string | null }[]>(
+      .get<{ id: string; code: string; name: string | null }[] | { data: { id: string; code: string; name: string | null }[] }>(
         `/auth/societies/${encodeURIComponent(societyId)}/wings`
       )
-      .then((r) => r.data),
+      .then((r) =>
+        unwrapListPayload<{ id: string; code: string; name: string | null }>(r.data)
+      ),
   loginResident: (input: ResidentLoginInput) =>
     api
       .post<ApiLoginResponse>('/auth/login', input)
@@ -80,22 +87,19 @@ export const dashboardApi = {
       .then((r) => mapDashboard(r.data) as DashboardSummary),
 };
 
-function unwrapRows<T>(payload: T[] | { data?: T[] }): T[] {
-  if (Array.isArray(payload)) return payload;
-  return Array.isArray(payload?.data) ? payload.data : [];
-}
-
 export const invoiceApi = {
   list: (filters: InvoiceFilters = {}) =>
     api
       .get<Record<string, unknown>[] | { data: Record<string, unknown>[] }>('/invoices', {
         params: {
-          limit: 36,
+          limit: 100,
           status: filters.status && filters.status !== 'All' ? filters.status : undefined,
           month: filters.month || undefined,
         },
       })
-      .then((r) => unwrapRows(r.data).map(mapInvoice)) as Promise<Invoice[]>,
+      .then((r) =>
+        unwrapListPayload<Record<string, unknown>>(r.data).map(mapInvoice)
+      ) as Promise<Invoice[]>,
   byNo: (invoiceNo: string) =>
     api
       .get<Record<string, unknown>>(`/invoices/${encodeURIComponent(invoiceNo)}`)
@@ -203,9 +207,11 @@ export const receiptApi = {
   list: () =>
     api
       .get<Record<string, unknown>[] | { data: Record<string, unknown>[] }>('/receipts', {
-        params: { limit: 36 },
+        params: { limit: 100 },
       })
-      .then((r) => unwrapRows(r.data).map(mapReceipt)) as Promise<Receipt[]>,
+      .then((r) =>
+        unwrapListPayload<Record<string, unknown>>(r.data).map(mapReceipt)
+      ) as Promise<Receipt[]>,
   byNo: (receiptNo: string) =>
     api
       .get<Record<string, unknown>>(`/receipts/${encodeURIComponent(receiptNo)}`)
@@ -214,7 +220,11 @@ export const receiptApi = {
 
 export const noticeApi = {
   list: () =>
-    api.get<Record<string, unknown>[]>('/notices').then((r) => r.data.map(mapNotice)) as Promise<SocietyNotice[]>,
+    api
+      .get<Record<string, unknown>[] | { data: Record<string, unknown>[] }>('/notices')
+      .then((r) =>
+        unwrapListPayload<Record<string, unknown>>(r.data).map(mapNotice)
+      ) as Promise<SocietyNotice[]>,
   byId: (id: string) =>
     api
       .get<Record<string, unknown>>(`/notices/${encodeURIComponent(id)}`)
@@ -223,7 +233,11 @@ export const noticeApi = {
 
 export const eventApi = {
   list: () =>
-    api.get<Record<string, unknown>[]>('/events').then((r) => r.data.map(mapEvent)) as Promise<SocietyEvent[]>,
+    api
+      .get<Record<string, unknown>[] | { data: Record<string, unknown>[] }>('/events')
+      .then((r) =>
+        unwrapListPayload<Record<string, unknown>>(r.data).map(mapEvent)
+      ) as Promise<SocietyEvent[]>,
   byId: (id: string) =>
     api
       .get<Record<string, unknown>>(`/events/${encodeURIComponent(id)}`)
@@ -232,5 +246,9 @@ export const eventApi = {
 
 export const visitorApi = {
   list: () =>
-    api.get<Record<string, unknown>[]>('/visitors').then((r) => r.data.map(mapVisitor)) as Promise<SocietyVisitor[]>,
+    api
+      .get<Record<string, unknown>[] | { data: Record<string, unknown>[] }>('/visitors')
+      .then((r) =>
+        unwrapListPayload<Record<string, unknown>>(r.data).map(mapVisitor)
+      ) as Promise<SocietyVisitor[]>,
 };

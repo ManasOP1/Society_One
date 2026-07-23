@@ -17,7 +17,7 @@ import { Radius, Spacing } from '@/constants/theme';
 import { useEvents, useNotices } from '@/hooks/queries';
 import { isInitialLoad } from '@/hooks/query-ui';
 import { useTheme } from '@/hooks/use-theme';
-import { formatDate } from '@/utils/format';
+import { formatDate, parseLocalDate } from '@/utils/format';
 
 const TABS = ['Notices', 'Events'] as const;
 type Tab = (typeof TABS)[number];
@@ -163,7 +163,11 @@ function EventsTab(props: HeaderProps) {
 
 function EventRow({ event }: { event: SocietyEvent }) {
   const theme = useTheme();
-  const date = new Date(event.date);
+  const date = parseLocalDate(event.date);
+  const dayLabel = Number.isNaN(date.getTime()) ? '—' : String(date.getDate());
+  const monthLabel = Number.isNaN(date.getTime())
+    ? '—'
+    : date.toLocaleString('en', { month: 'short' });
   const done = event.status === 'Completed';
   return (
     <Link href={{ pathname: '/event/[id]', params: { id: event.id } }} asChild>
@@ -172,10 +176,10 @@ function EventRow({ event }: { event: SocietyEvent }) {
           <View style={styles.cardHeader}>
             <View style={[styles.dateBox, { backgroundColor: done ? theme.cardMuted : theme.surfaceDark }]}>
               <AppText variant="heading" style={{ color: done ? theme.textSecondary : theme.accent }}>
-                {date.getDate()}
+                {dayLabel}
               </AppText>
               <AppText variant="caption" style={{ color: done ? theme.textSecondary : theme.accent }}>
-                {date.toLocaleString('en', { month: 'short' })}
+                {monthLabel}
               </AppText>
             </View>
             <View style={{ flex: 1, gap: 2 }}>

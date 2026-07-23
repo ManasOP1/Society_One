@@ -1,14 +1,7 @@
 /**
- * Invoices — list/get/generate-monthly are backed by the live Nest API
- * (`GET /invoices`, `GET /invoices/:invoiceNo`, `POST /invoices/generate-monthly`).
- *
- * The Nest API does not expose endpoints for duplicating an invoice,
- * changing its status, recording a manual payment, or deleting it, so
- * those operations keep working against an in-memory cache only (no
- * longer persisted to localStorage / no fake seed data). That means
- * demo payment actions are safe to explore within a session but are not
- * written back to Supabase — a real payment must go through
- * `POST /payments/orders` (Razorpay) instead.
+ * Invoices — list/get/generate-monthly/remove are backed by the live Nest API.
+ * Mark Paid goes through paymentService → POST /payments/manual.
+ * Fake local-only status/duplicate actions are no longer used by the UI.
  */
 
 import { invoicesApi, notifyDataUpdated, apiErrorMessage } from "@/lib/api-client";
@@ -41,7 +34,7 @@ function persistInvoices(societyId: string) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapApiInvoice(raw: any, societyId: string): Invoice {
+export function mapApiInvoice(raw: any, societyId: string): Invoice {
   const lineItems: InvoiceLineItem[] = Array.isArray(raw?.lineItems)
     ? raw.lineItems.map((li: { id?: string; description: string; amount: number; isDeduction?: boolean }) => ({
         id: li.id ?? uid("li"),
@@ -71,20 +64,20 @@ function mapApiInvoice(raw: any, societyId: string): Invoice {
   return {
     id: raw?.id ?? uid("inv"),
     invoiceNo: raw?.invoiceNo ?? "",
-    societyId,
+    societyId: societyId || raw?.societyId || "",
     societyName: raw?.societyName ?? "",
     societyAddress: raw?.societyAddress ?? "",
     registrationNo: raw?.registrationNo ?? "",
     panNumber: raw?.panNumber ?? "",
     memberId: raw?.memberId ?? "",
-    ownerName: raw?.member?.ownerName ?? "",
+    ownerName: raw?.member?.ownerName ?? raw?.ownerName ?? "",
     tenantName: raw?.tenantName ?? "—",
-    flatNo: raw?.flat?.flatNo ?? "",
-    wing: raw?.flat?.wing?.code ?? "",
+    flatNo: raw?.flat?.flatNo ?? raw?.flatNo ?? "",
+    wing: raw?.flat?.wing?.code ?? raw?.wing ?? "",
     areaSqft: Number(raw?.flat?.areaSqft) || 0,
     ownerAddress: raw?.ownerAddress ?? "",
-    mobile: raw?.member?.phone ?? "",
-    email: raw?.member?.email ?? "",
+    mobile: raw?.member?.phone ?? raw?.mobile ?? "",
+    email: raw?.member?.email ?? raw?.email ?? "",
     month: raw?.month ?? raw?.billingMonth ?? "",
     year: Number(raw?.year) || 0,
     issueDate: raw?.issueDate ? String(raw.issueDate).slice(0, 10) : "",
@@ -113,7 +106,7 @@ function upsert(invoice: Invoice) {
   const idx = cache.findIndex((i) => i.invoiceNo === invoice.invoiceNo);
   if (idx >= 0) cache[idx] = invoice;
   else cache = [invoice, ...cache];
-  persistInvoices(invoice.societyId);
+  if (invoice.societyId) persistInvoices(invoice.societyId);
 }
 
 async function refreshList(societyId: string): Promise<void> {
@@ -155,6 +148,23 @@ export const invoiceService = {
     return cache.find((i) => i.id === id) ?? null;
   },
 
+  /** Fetch full invoice (with line items) from Nest and upsert into cache. */
+  async fetchByNo(invoiceNo: string, societyId?: string): Promise<Invoice> {
+    const raw = await invoicesApi.byNo(invoiceNo, societyId);
+    const mapped = mapApiInvoice(raw, societyId || raw?.societyId || "");
+    upsert(mapped);
+    notifyDataUpdated("invoices");
+    return mapped;
+  },
+
+  /** Public shareable invoice (no auth). */
+  async fetchPublicByNo(invoiceNo: string): Promise<Invoice> {
+    const raw = await invoicesApi.publicByNo(invoiceNo);
+    const mapped = mapApiInvoice(raw, raw?.societyId || "");
+    upsert(mapped);
+    return mapped;
+  },
+
   async generateMonthly(societyId: string, month: string): Promise<Invoice[]> {
     try {
       await invoicesApi.generateMonthly(month, societyId);
@@ -165,65 +175,6 @@ export const invoiceService = {
       console.error("Failed to generate invoices:", apiErrorMessage(e));
       throw new Error(apiErrorMessage(e));
     }
-  },
-
-  /** Local-only (no API endpoint) — duplicates within the in-memory cache for this session. */
-  duplicate(invoiceNo: string, _actor: string): Invoice | null {
-    const src = this.getByNo(invoiceNo);
-    if (!src) return null;
-    const copy: Invoice = {
-      ...src,
-      id: uid("inv"),
-      invoiceNo: `${src.invoiceNo}-COPY`,
-      paidAmount: 0,
-      outstanding: src.totalAmount,
-      status: "Pending",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      cancelledAt: null,
-    };
-    upsert(copy);
-    notifyDataUpdated("invoices");
-    return copy;
-  },
-
-  /** Local-only (no API endpoint) — updates the in-memory cache for this session only. */
-  updateStatus(
-    invoiceNo: string,
-    status: InvoiceStatus,
-    _actor: string,
-    paidAmount?: number
-  ): Invoice | null {
-    const inv = this.getByNo(invoiceNo);
-    if (!inv) return null;
-    let next = { ...inv, status, updatedAt: new Date().toISOString() };
-    if (status === "Cancelled") next.cancelledAt = new Date().toISOString();
-    else if (status === "Paid") {
-      next.paidAmount = next.totalAmount;
-      next.outstanding = 0;
-    } else if (status === "Partial") {
-      next.paidAmount = paidAmount ?? Math.max(1, Math.round(next.totalAmount / 2));
-      next.outstanding = Math.max(0, next.totalAmount - next.paidAmount);
-    } else if (status === "Pending") {
-      next.paidAmount = 0;
-      next.outstanding = next.totalAmount;
-    }
-    upsert(next);
-    notifyDataUpdated("invoices");
-    return next;
-  },
-
-  /** Local-only (no API endpoint) — applies a payment to the in-memory cache for this session only. */
-  applyPayment(invoiceNo: string, amount: number, _actor: string): Invoice | null {
-    const inv = this.getByNo(invoiceNo);
-    if (!inv || inv.status === "Cancelled") return inv ?? null;
-    const paidAmount = Math.min(inv.totalAmount, inv.paidAmount + amount);
-    const outstanding = Math.max(0, inv.totalAmount - paidAmount);
-    const status: InvoiceStatus = outstanding <= 0 ? "Paid" : "Partial";
-    const next = { ...inv, paidAmount, outstanding, status, updatedAt: new Date().toISOString() };
-    upsert(next);
-    notifyDataUpdated("invoices");
-    return next;
   },
 
   /** Soft-deletes an invoice in the API and drops it from the local cache. */

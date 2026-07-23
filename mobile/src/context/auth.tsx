@@ -3,6 +3,7 @@
  * exposes login/logout, and signs the user out when token refresh fails.
  */
 
+import { isAxiosError } from 'axios';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
@@ -24,6 +25,20 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function isAuthUserShape(value: unknown): value is AuthUser {
+  if (!value || typeof value !== 'object') return false;
+  const u = value as Record<string, unknown>;
+  return (
+    typeof u.id === 'string' &&
+    typeof u.societyId === 'string' &&
+    (u.role === 'resident' || u.role === 'admin')
+  );
+}
+
+function isAuthFailure(error: unknown): boolean {
+  return isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403);
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -43,8 +58,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           tokenStore.getRefreshToken(),
           tokenStore.getStoredUser(),
         ]);
-        if (!cancelled && token && storedUser) {
-          setUser(JSON.parse(storedUser) as AuthUser);
+        if (!token || !storedUser) return;
+
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(storedUser);
+        } catch {
+          await tokenStore.clear();
+          return;
+        }
+
+        if (!isAuthUserShape(parsed) || parsed.role !== 'resident') {
+          await tokenStore.clear();
+          return;
+        }
+
+        // Optimistic restore so UI can paint, then validate against the API.
+        if (!cancelled) setUser(parsed);
+        try {
+          const me = await authApi.me();
+          if (cancelled) return;
+          if (me.role !== 'resident') {
+            await tokenStore.clear();
+            setUser(null);
+            return;
+          }
+          await tokenStore.saveUser(JSON.stringify(me));
+          setUser(me);
+        } catch (error) {
+          // Only clear on auth failures — keep optimistic session on network/5xx.
+          if (isAuthFailure(error)) {
+            await tokenStore.clear();
+            if (!cancelled) setUser(null);
+          }
         }
       } catch {
         /* corrupt session — stay logged out */
@@ -102,12 +148,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const token = await tokenStore.getRefreshToken();
       if (!token) return;
       const me = await authApi.me();
+      if (me.role !== 'resident') {
+        await tokenStore.clear();
+        clearSessionCache();
+        setUser(null);
+        return;
+      }
       await tokenStore.saveUser(JSON.stringify(me));
       setUser(me);
-    } catch {
-      /* keep last known profile on transient errors */
+    } catch (error) {
+      if (isAuthFailure(error)) {
+        await tokenStore.clear();
+        clearSessionCache();
+        setUser(null);
+      }
     }
-  }, []);
+  }, [clearSessionCache]);
 
   const value = useMemo<AuthContextValue>(
     () => ({ user, isAuthenticated: !!user, isRestoring, login, logout, refreshSession }),

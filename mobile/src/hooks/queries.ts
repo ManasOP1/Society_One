@@ -1,6 +1,6 @@
 /** TanStack Query hooks for every backend resource. */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   dashboardApi,
@@ -70,6 +70,8 @@ export function useInvoices(filters: InvoiceFilters = {}) {
     queryKey: queryKeys.invoices(userId, societyId, filters),
     queryFn: () => invoiceApi.list(filters),
     enabled,
+    /** Keep list visible while status/month filters change — safe (same resource shape). */
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -161,7 +163,11 @@ export function usePayInvoice() {
     onSuccess: (result) => {
       queryClient.setQueryData(queryKeys.invoice(userId, societyId, result.invoice.invoiceNo), result.invoice);
       queryClient.setQueryData(queryKeys.receipt(userId, societyId, result.receipt.receiptNo), result.receipt);
-      queryClient.invalidateQueries({ queryKey: queryKeys.root(userId, societyId) });
+      // Refetch even inactive list caches so Bills/Receipts update immediately after pay.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.root(userId, societyId),
+        refetchType: 'all',
+      });
     },
   });
 }

@@ -46,7 +46,7 @@ function mapApiVisitor(raw: any, societyId: string): SocietyVisitor {
     id: raw?.id ?? `vs-${Date.now()}`,
     societyId,
     name: raw?.name ?? "",
-    flat: raw?.flat ?? "",
+    flat: raw?.flat ?? raw?.flatLabel ?? "",
     purpose: raw?.purpose ?? "",
     vehicle: raw?.vehicle || "—",
     expectedTime: raw?.expectedTime || "",

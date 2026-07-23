@@ -17,7 +17,17 @@ import { toNumber } from '../../common/utils/decimal.util';
 import { readCache } from '../../common/utils/ttl-cache';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 
-function serializeReceipt(r: Receipt & { member?: unknown; invoice?: unknown }) {
+function serializeReceipt(
+  r: Receipt & {
+    member?: unknown;
+    invoice?: {
+      invoiceNo?: string;
+      billingMonth?: string;
+      flat?: { flatNo?: string; wing?: { code?: string } | null } | null;
+    } | null;
+  },
+) {
+  const flat = r.invoice?.flat;
   return {
     ...r,
     month: r.billingMonth,
@@ -25,6 +35,8 @@ function serializeReceipt(r: Receipt & { member?: unknown; invoice?: unknown }) 
     amount: toNumber(r.amount),
     lateFee: toNumber(r.lateFee),
     totalPaid: toNumber(r.totalPaid),
+    flatNo: flat?.flatNo ?? null,
+    wing: flat?.wing?.code ?? null,
   };
 }
 
@@ -47,7 +59,14 @@ export class ReceiptsService {
     const orderBy = { createdAt: 'desc' as const };
     const include = {
       member: { select: { id: true, ownerName: true } },
-      invoice: { select: { id: true, invoiceNo: true, billingMonth: true } },
+      invoice: {
+        select: {
+          id: true,
+          invoiceNo: true,
+          billingMonth: true,
+          flat: { select: { flatNo: true, wing: { select: { code: true } } } },
+        },
+      },
     };
 
     if (wantsPagination(filters)) {
@@ -85,7 +104,9 @@ export class ReceiptsService {
       where: { societyId_receiptNo: { societyId, receiptNo } },
       include: {
         member: true,
-        invoice: true,
+        invoice: {
+          include: { flat: { include: { wing: true } } },
+        },
         payment: true,
       },
     });
@@ -101,7 +122,9 @@ export class ReceiptsService {
       where: { id, societyId },
       include: {
         member: true,
-        invoice: true,
+        invoice: {
+          include: { flat: { include: { wing: true } } },
+        },
         payment: true,
       },
     });

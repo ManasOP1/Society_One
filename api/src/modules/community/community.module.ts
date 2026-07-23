@@ -248,6 +248,7 @@ export class CommunityService {
           select: {
             id: true,
             title: true,
+            body: true,
             pinned: true,
             publishedAt: true,
             createdAt: true,
@@ -285,6 +286,8 @@ export class CommunityService {
             paymentDate: true,
             createdAt: true,
             modeCode: true,
+            billingMonth: true,
+            invoice: { select: { invoiceNo: true } },
           },
         }),
         this.prisma.visitor.count({

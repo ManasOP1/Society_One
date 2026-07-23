@@ -176,6 +176,35 @@ export class BillingService {
     return serializeInvoice(inv);
   }
 
+  /** Unauthenticated public invoice view (shareable link). */
+  async getPublicByInvoiceNo(invoiceNo: string) {
+    const inv = await this.prisma.invoice.findFirst({
+      where: { invoiceNo, deletedAt: null },
+      include: {
+        ...INVOICE_INCLUDE,
+        society: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            registrationNo: true,
+            panNumber: true,
+          },
+        },
+      },
+    });
+    if (!inv) throw new NotFoundException('Invoice not found');
+    const serialized = serializeInvoice(inv);
+    return {
+      ...serialized,
+      societyId: inv.societyId,
+      societyName: inv.society?.name ?? '',
+      societyAddress: inv.society?.address ?? '',
+      registrationNo: inv.society?.registrationNo ?? '',
+      panNumber: inv.society?.panNumber ?? '',
+    };
+  }
+
   async generateMonthly(societyId: string, month: string, actor: AuthUser) {
     if (!/^\d{4}-\d{2}$/.test(month)) {
       throw new BadRequestException('month must be YYYY-MM');

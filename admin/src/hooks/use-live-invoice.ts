@@ -1,38 +1,39 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { LIVE_SYNC_DEBOUNCE_MS } from "@/constants/live-sync";
+import { apiErrorMessage } from "@/lib/api-client";
 import { invoiceService } from "@/services/invoice.service";
-import { subscribeLiveData } from "@/lib/live-data-events";
 import type { Invoice } from "@/types";
 
-/** Keeps a single invoice in sync with the invoice cache (public link / receipt pages). */
+/** Loads a shareable invoice from the public Nest API (no admin session required). */
 export function useLiveInvoice(invoiceNo: string) {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     if (!invoiceNo) {
       setInvoice(null);
+      setLoading(false);
+      setError(null);
       return;
     }
-    setInvoice(invoiceService.getByNo(invoiceNo));
+    setLoading(true);
+    setError(null);
+    try {
+      const row = await invoiceService.fetchPublicByNo(invoiceNo);
+      setInvoice(row);
+    } catch (e) {
+      setInvoice(null);
+      setError(apiErrorMessage(e));
+    } finally {
+      setLoading(false);
+    }
   }, [invoiceNo]);
 
   useEffect(() => {
-    refresh();
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    const schedule = () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(refresh, LIVE_SYNC_DEBOUNCE_MS);
-    };
-    const unsub = subscribeLiveData("invoices", schedule);
-    window.addEventListener("focus", schedule);
-    return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      unsub();
-      window.removeEventListener("focus", schedule);
-    };
+    void refresh();
   }, [refresh]);
 
-  return { invoice, refresh };
+  return { invoice, loading, error, refresh };
 }

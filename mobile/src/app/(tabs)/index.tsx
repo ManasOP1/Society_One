@@ -30,7 +30,13 @@ import { useAuth } from '@/context/auth';
 import { useDashboard, useSocietySettings } from '@/hooks/queries';
 import { isInitialLoad } from '@/hooks/query-ui';
 import { useTheme } from '@/hooks/use-theme';
-import { formatDate, formatINR } from '@/utils/format';
+import { formatDate, formatINR, parseLocalDate } from '@/utils/format';
+
+function eventDateChip(iso: string): { day: string; month: string } {
+  const d = parseLocalDate(iso);
+  if (Number.isNaN(d.getTime())) return { day: '—', month: '—' };
+  return { day: String(d.getDate()), month: d.toLocaleString('en', { month: 'short' }) };
+}
 
 export default function DashboardScreen() {
   const theme = useTheme();
@@ -198,10 +204,10 @@ export default function DashboardScreen() {
                   <View style={[styles.darkRow, { backgroundColor: theme.elevatedDark }]}>
                     <View style={[styles.darkDate, { backgroundColor: theme.cardOnDark }]}>
                       <AppText variant="title" style={{ color: Brand.lime }}>
-                        {new Date(summary.upcomingEvent.date).getDate()}
+                        {eventDateChip(summary.upcomingEvent.date).day}
                       </AppText>
                       <AppText variant="caption" style={{ color: Brand.lime }}>
-                        {new Date(summary.upcomingEvent.date).toLocaleString('en', { month: 'short' })}
+                        {eventDateChip(summary.upcomingEvent.date).month}
                       </AppText>
                     </View>
                     <View style={{ flex: 1, gap: 2 }}>

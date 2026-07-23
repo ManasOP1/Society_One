@@ -1,9 +1,9 @@
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
-import { apiErrorMessage } from '@/api/client';
+import { api, apiErrorMessage } from '@/api/client';
 import type { PaymentMode, PayResponse } from '@/api/types';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import { useInvoice, usePayInvoice } from '@/hooks/queries';
 import { useTheme } from '@/hooks/use-theme';
 import { PaymentSuccessAnimation } from '@/components/payments/payment-success-animation';
 import { formatDate, formatINR, formatMonth } from '@/utils/format';
+import { isRazorpayCheckoutAvailable } from '@/utils/razorpay-checkout';
 
 const RESIDENT_MODES: { mode: PaymentMode; icon: keyof typeof Feather.glyphMap; hint: string }[] = [
   { mode: 'UPI', icon: 'smartphone', hint: 'Google Pay, PhonePe, Paytm' },
@@ -46,15 +47,46 @@ export default function PayScreen() {
   const [amountInput, setAmountInput] = useState<string | null>(null);
   const [mode, setMode] = useState<PaymentMode>('UPI');
   const [result, setResult] = useState<PayResponse | null>(null);
+  const [onlineEnabled, setOnlineEnabled] = useState<boolean | null>(isAdmin ? true : null);
+  const [onlineMessage, setOnlineMessage] = useState(
+    'Online payments are temporarily disabled. Please pay at the society office.',
+  );
   const amountText = amountInput ?? (invoice.data ? String(invoice.data.outstanding) : '');
   const setAmountText = setAmountInput;
   const modes = isAdmin ? ADMIN_MODES : RESIDENT_MODES;
+  const checkoutReady = isAdmin || isRazorpayCheckoutAvailable();
+  const canPayOnline = isAdmin || (onlineEnabled === true && checkoutReady);
+
+  useEffect(() => {
+    if (isAdmin) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get<{
+          razorpayEnabled?: boolean;
+          onlinePaymentsEnabled?: boolean;
+          message?: string;
+        }>('/payments/config');
+        if (cancelled) return;
+        setOnlineEnabled(!!(data.razorpayEnabled || data.onlinePaymentsEnabled));
+        if (data.message) setOnlineMessage(data.message);
+      } catch {
+        if (!cancelled) {
+          setOnlineEnabled(false);
+          setOnlineMessage('Could not check payment status. Please pay at the society office.');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
 
   if (result) {
     return <PaymentSuccess result={result} />;
   }
 
-  if (invoice.isPending) {
+  if (invoice.isPending || (!isAdmin && onlineEnabled === null)) {
     return (
       <Screen>
         <Skeleton height={120} radius={Radius.lg} />
@@ -72,6 +104,14 @@ export default function PayScreen() {
   }
 
   const inv = invoice.data;
+  if (!inv || inv.invoiceNo !== (invoiceNo ?? '')) {
+    return (
+      <Screen scroll={false}>
+        <ErrorState message="Invoice not found" onRetry={() => invoice.refetch()} />
+      </Screen>
+    );
+  }
+
   if (inv.outstanding <= 0 || inv.status === 'Cancelled') {
     return (
       <Screen scroll={false}>
@@ -84,7 +124,7 @@ export default function PayScreen() {
   const amountValid = Number.isFinite(amount) && amount > 0 && amount <= inv.outstanding;
 
   async function handlePay() {
-    if (!amountValid || payMutation.isPending) return;
+    if (!amountValid || payMutation.isPending || !canPayOnline) return;
     try {
       const response = await payMutation.mutateAsync({ invoiceNo: inv.invoiceNo, amount, mode });
       setResult(response);
@@ -92,6 +132,14 @@ export default function PayScreen() {
       // error surfaced via payMutation.error below
     }
   }
+
+  const footerHint = isAdmin
+    ? 'Recording a collection updates the invoice and creates an auditable receipt.'
+    : !onlineEnabled
+      ? onlineMessage
+      : !checkoutReady
+        ? 'In-app checkout needs the SocietyOne APK / native build — Expo Go cannot open Razorpay.'
+        : 'You will complete payment securely via Razorpay.';
 
   return (
     <Screen>
@@ -128,6 +176,18 @@ export default function PayScreen() {
         </AppText>
       </Card>
 
+      {!canPayOnline && !isAdmin ? (
+        <Card style={{ gap: Spacing.one }}>
+          <AppText variant="heading">Pay at society office</AppText>
+          <AppText variant="body" color="textSecondary">
+            {footerHint}
+          </AppText>
+          <AppText variant="caption" color="textSecondary">
+            Ask the society admin to record your payment from the web console after you pay.
+          </AppText>
+        </Card>
+      ) : null}
+
       {/* Amount */}
       <Card style={{ gap: Spacing.one }}>
         <AppText variant="label">Amount to pay</AppText>
@@ -142,6 +202,7 @@ export default function PayScreen() {
             keyboardType="numeric"
             placeholder="0"
             placeholderTextColor={theme.textSecondary}
+            editable={canPayOnline}
           />
         </View>
         {!amountValid && amountText ? (
@@ -152,12 +213,14 @@ export default function PayScreen() {
         <View style={styles.presetRow}>
           <Pressable
             style={[styles.preset, { borderColor: theme.border }]}
-            onPress={() => setAmountText(String(inv.outstanding))}>
+            onPress={() => setAmountText(String(inv.outstanding))}
+            disabled={!canPayOnline}>
             <AppText variant="caption">Full · {formatINR(inv.outstanding)}</AppText>
           </Pressable>
           <Pressable
             style={[styles.preset, { borderColor: theme.border }]}
-            onPress={() => setAmountText(String(Math.ceil(inv.outstanding / 2)))}>
+            onPress={() => setAmountText(String(Math.ceil(inv.outstanding / 2)))}
+            disabled={!canPayOnline}>
             <AppText variant="caption">Half · {formatINR(Math.ceil(inv.outstanding / 2))}</AppText>
           </Pressable>
         </View>
@@ -174,10 +237,11 @@ export default function PayScreen() {
             <Pressable
               key={m}
               accessibilityRole="button"
-              onPress={() => setMode(m)}
+              onPress={() => canPayOnline && setMode(m)}
+              disabled={!canPayOnline}
               style={[
                 styles.modeRow,
-                { backgroundColor: theme.surfaceDark },
+                { backgroundColor: theme.surfaceDark, opacity: canPayOnline ? 1 : 0.55 },
                 active && { borderColor: theme.accent },
               ]}>
               <View style={[styles.modeIcon, { backgroundColor: theme.cardOnDark }]}>
@@ -214,22 +278,22 @@ export default function PayScreen() {
 
       <Button
         title={
-          amountValid
-            ? `${isAdmin ? 'Record payment' : 'Pay'} ${formatINR(amount)}`
-            : isAdmin
-              ? 'Record payment'
-              : 'Pay'
+          !canPayOnline && !isAdmin
+            ? 'Online pay unavailable'
+            : amountValid
+              ? `${isAdmin ? 'Record payment' : 'Pay'} ${formatINR(amount)}`
+              : isAdmin
+                ? 'Record payment'
+                : 'Pay'
         }
         variant="secondary"
         loading={payMutation.isPending}
-        disabled={!amountValid}
+        disabled={!amountValid || !canPayOnline}
         icon={<Feather name="lock" size={16} color={theme.onAccent} />}
         onPress={handlePay}
       />
       <AppText variant="caption" color="textSecondary" style={{ textAlign: 'center' }}>
-        {isAdmin
-          ? 'Recording a collection updates the invoice and creates an auditable receipt.'
-          : 'Online Razorpay checkout is temporarily off — pay at the society office for now.'}
+        {footerHint}
       </AppText>
     </Screen>
   );

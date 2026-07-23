@@ -24,7 +24,12 @@ export function usePushNotifications(enabled: boolean) {
 
     (async () => {
       // Lazy-load so Expo Go never imports expo-notifications (it throws on load).
-      const Notifications = await import('expo-notifications');
+      let Notifications: typeof import('expo-notifications');
+      try {
+        Notifications = await import('expo-notifications');
+      } catch {
+        return;
+      }
 
       Notifications.setNotificationHandler({
         handleNotification: async () => ({
