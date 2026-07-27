@@ -30,7 +30,10 @@ async function bootstrap() {
 
   const corsOrigins = parseCorsOrigins(config.get<string>('CORS_ORIGINS'));
   app.enableCors({
-    origin: (origin, callback) => {
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
       // Non-browser clients (mobile / server-to-server) send no Origin.
       if (!origin) return callback(null, true);
       if (corsOrigins.includes(origin)) return callback(null, true);
