@@ -289,7 +289,7 @@ export const membersApi = {
 
 export const societiesApi = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  list: () => apiFetch<any[]>("/societies"),
+  list: async () => asListRows(await apiFetch("/societies")),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   me: () => apiFetch<any>("/societies/me"),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

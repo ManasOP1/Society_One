@@ -22,11 +22,12 @@ import type {
 /* Enum / status maps                                                      */
 /* ---------------------------------------------------------------------- */
 
+/** Only true society admins map to mobile "admin" (manual collect). Others stay resident. */
 const ROLE_MAP: Record<string, AuthUser['role']> = {
   SOCIETY_ADMIN: 'admin',
-  COMMITTEE_MEMBER: 'admin',
   SUPER_ADMIN: 'admin',
-  SECURITY_GUARD: 'admin',
+  COMMITTEE_MEMBER: 'resident',
+  SECURITY_GUARD: 'resident',
   RESIDENT: 'resident',
 };
 

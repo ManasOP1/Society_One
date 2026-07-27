@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { json, raw, Request, Response, NextFunction } from 'express';
 import { AppModule } from './app.module';
+import { parseCorsOrigins } from './config/env';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { JwtAuthGuard } from './modules/auth/jwt-auth.guard';
 import { RolesGuard } from './common/guards/rbac.guards';
@@ -27,12 +28,19 @@ async function bootstrap() {
   const prefix = config.get<string>('API_PREFIX') ?? 'api/v1';
   app.setGlobalPrefix(prefix);
 
+  const corsOrigins = parseCorsOrigins(config.get<string>('CORS_ORIGINS'));
   app.enableCors({
-    origin: (config.get<string>('CORS_ORIGINS') ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
+    origin: (origin, callback) => {
+      // Non-browser clients (mobile / server-to-server) send no Origin.
+      if (!origin) return callback(null, true);
+      if (corsOrigins.includes(origin)) return callback(null, true);
+      // eslint-disable-next-line no-console
+      console.warn(`[CORS] Blocked origin: ${origin}. Allowed: ${corsOrigins.join(', ')}`);
+      return callback(null, false);
+    },
     credentials: true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
 
   // Zod DTOs (createZodDto) carry no class-validator metadata, so a class-validator

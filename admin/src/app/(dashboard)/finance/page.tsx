@@ -29,14 +29,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { financeSummary } from "@/data/mock";
-import { financialBySociety } from "@/data/societies";
 import { useAuth } from "@/context/auth-context";
 import { expenseService } from "@/services/expense.service";
 import { invoiceService } from "@/services/invoice.service";
+import { receiptService } from "@/services/payment.service";
 import { formatCurrency } from "@/lib/utils";
 import { AnimatedCounter } from "@/components/shared/animated-counter";
 import type { Expense } from "@/types";
+import { format } from "date-fns";
 
 type ExpenseForm = {
   category: string;
@@ -74,10 +74,51 @@ export default function FinancePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [society?.id]);
 
-  const financialData = society ? financialBySociety[society.id] ?? [] : [];
-  const income = financeSummary
-    .filter((f) => f.type === "income")
-    .reduce((s, f) => s + f.amount, 0);
+  const billingMonth = format(new Date(), "yyyy-MM");
+
+  const financialData = useMemo(() => {
+    if (!society) return [];
+    const invoices = invoiceService
+      .list(society.id)
+      .filter((i) => i.status !== "Cancelled");
+    const receipts = receiptService.list(society.id);
+    const months = new Map<string, { collection: number; expense: number }>();
+
+    for (const inv of invoices) {
+      if (!inv.month) continue;
+      const row = months.get(inv.month) ?? { collection: 0, expense: 0 };
+      months.set(inv.month, row);
+    }
+    for (const rcpt of receipts) {
+      if (!rcpt.month) continue;
+      const row = months.get(rcpt.month) ?? { collection: 0, expense: 0 };
+      row.collection += rcpt.totalPaid || rcpt.amount;
+      months.set(rcpt.month, row);
+    }
+    for (const exp of expenses) {
+      const key = (exp.expenseDate || "").slice(0, 7);
+      if (!key) continue;
+      const row = months.get(key) ?? { collection: 0, expense: 0 };
+      row.expense += exp.amount;
+      months.set(key, row);
+    }
+
+    return [...months.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-6)
+      .map(([month, row]) => ({
+        month: month.slice(5),
+        collection: Math.round(row.collection),
+        expense: Math.round(row.expense),
+      }));
+  }, [society, expenses]);
+
+  const income = useMemo(() => {
+    if (!society) return 0;
+    return receiptService
+      .list(society.id)
+      .reduce((s, r) => s + (r.totalPaid || r.amount), 0);
+  }, [society]);
 
   const expenseTotal = useMemo(
     () => expenses.reduce((s, e) => s + e.amount, 0),
@@ -85,7 +126,7 @@ export default function FinancePage() {
   );
 
   const monthStats = society
-    ? invoiceService.stats(society.id, "2026-07")
+    ? invoiceService.stats(society.id, billingMonth)
     : null;
 
   const exportExpenses = () => {
@@ -276,7 +317,28 @@ export default function FinancePage() {
               <CardTitle>Breakdown</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {financeSummary.map((item) => (
+              {[
+                {
+                  label: "Total collections (all time)",
+                  type: "income" as const,
+                  amount: income,
+                },
+                {
+                  label: `Collected (${billingMonth})`,
+                  type: "income" as const,
+                  amount: monthStats?.collected ?? 0,
+                },
+                {
+                  label: `Outstanding (${billingMonth})`,
+                  type: "expense" as const,
+                  amount: monthStats?.outstanding ?? 0,
+                },
+                {
+                  label: "Expenses (recorded)",
+                  type: "expense" as const,
+                  amount: expenseTotal,
+                },
+              ].map((item) => (
                 <div
                   key={item.label}
                   className="flex items-center justify-between rounded-2xl bg-secondary/50 px-3.5 py-3"
@@ -296,8 +358,8 @@ export default function FinancePage() {
                 </div>
               ))}
               <p className="pt-2 text-xs text-muted-foreground">
-                Net (demo chart): {formatCurrency(income - expenseTotal)} · Live
-                expenses: {formatCurrency(expenseTotal)}
+                Live from invoices, receipts, and expense records for this
+                society. Net: {formatCurrency(income - expenseTotal)}.
               </p>
             </CardContent>
           </Card>

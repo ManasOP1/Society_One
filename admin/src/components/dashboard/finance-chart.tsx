@@ -46,7 +46,7 @@ export function FinanceChart({ data }: FinanceChartProps) {
             Monthly collection analysis
           </h3>
           <p className="mt-0.5 text-xs text-slate-400">
-            Maintenance collected vs expenses for this society
+            Live collection vs outstanding billed (from invoices & receipts)
           </p>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-3">
@@ -57,7 +57,7 @@ export function FinanceChart({ data }: FinanceChartProps) {
             </span>
             <span className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-[#FB923C]" />
-              Expense
+              Outstanding
             </span>
           </div>
           <Link
@@ -111,7 +111,7 @@ export function FinanceChart({ data }: FinanceChartProps) {
             <Area
               type="monotone"
               dataKey="expense"
-              name="Expense"
+              name="Outstanding"
               stroke="#FB923C"
               strokeWidth={2.5}
               fill="url(#expenseFill)"

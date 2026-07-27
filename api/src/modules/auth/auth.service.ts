@@ -234,8 +234,8 @@ export class AuthService {
       },
     });
 
-    const appUrl = this.config.get<string>('APP_PUBLIC_URL') ?? 'http://localhost:4000';
-    const resetUrl = `${appUrl}/reset-password?token=${rawToken}`;
+    const appUrl = this.config.get<string>('APP_PUBLIC_URL') ?? 'http://localhost:3000';
+    const resetUrl = `${appUrl.replace(/\/$/, '')}/reset-password?token=${rawToken}`;
 
     if (this.config.get<string>('NODE_ENV') === 'development') {
       // eslint-disable-next-line no-console

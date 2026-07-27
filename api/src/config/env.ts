@@ -66,8 +66,16 @@ export const envSchema = z
     DB_POOL_MAX: z.coerce.number().default(5),
     DB_POOL_IDLE_MS: z.coerce.number().default(30_000),
     DB_POOL_CONN_TIMEOUT_MS: z.coerce.number().default(30_000),
-    APP_PUBLIC_URL: z.string().url().default('http://localhost:4000'),
-    CORS_ORIGINS: z.string().default('http://localhost:3000,http://localhost:8081'),
+    /** Admin web origin for password-reset links — NOT the API URL. */
+    APP_PUBLIC_URL: z.preprocess(
+      (val) => (val === '' ? undefined : val),
+      z.string().url().default('http://localhost:3000'),
+    ),
+    /** Comma-separated browser origins (Vercel admin + Expo web). Blank → defaults. */
+    CORS_ORIGINS: z.preprocess(
+      (val) => (val === '' || val == null ? undefined : val),
+      z.string().default('http://localhost:3000,http://localhost:8081'),
+    ),
   })
   .superRefine((data, ctx) => {
     if (!data.SUPABASE_SERVICE_ROLE_KEY && !data.SUPABASE_SECRET_KEY) {
@@ -100,13 +108,21 @@ export function validateEnv(config: Record<string, unknown>): Env {
   return parsed.data;
 }
 
+export function parseCorsOrigins(raw: string | undefined | null): string[] {
+  const value =
+    raw && raw.trim()
+      ? raw
+      : 'http://localhost:3000,http://localhost:8081';
+  return value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export default registerAs('app', () => ({
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: Number(process.env.PORT ?? 4000),
   apiPrefix: process.env.API_PREFIX ?? 'api/v1',
-  corsOrigins: (process.env.CORS_ORIGINS ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean),
-  publicUrl: process.env.APP_PUBLIC_URL ?? 'http://localhost:4000',
+  corsOrigins: parseCorsOrigins(process.env.CORS_ORIGINS),
+  publicUrl: process.env.APP_PUBLIC_URL?.trim() || 'http://localhost:3000',
 }));

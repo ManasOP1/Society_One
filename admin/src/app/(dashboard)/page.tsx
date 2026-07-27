@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { format } from "date-fns";
 import { useAuth } from "@/context/auth-context";
-import { financialBySociety } from "@/data/societies";
 import { invoiceService } from "@/services/invoice.service";
+import { receiptService } from "@/services/payment.service";
 import { HeroStats } from "@/components/dashboard/hero-stats";
 import { FeaturedEvent } from "@/components/dashboard/featured-event";
 import { CalendarWidget } from "@/components/dashboard/calendar-widget";
@@ -15,15 +15,46 @@ import { PageTransition } from "@/components/shared/page-transition";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 
+function liveCollectionSeries(societyId: string) {
+  const invoices = invoiceService
+    .list(societyId)
+    .filter((i) => i.status !== "Cancelled");
+  const receipts = receiptService.list(societyId);
+  const months = new Map<string, { collection: number; expected: number }>();
+
+  for (const inv of invoices) {
+    if (!inv.month) continue;
+    const row = months.get(inv.month) ?? { collection: 0, expected: 0 };
+    row.expected += inv.totalAmount;
+    months.set(inv.month, row);
+  }
+  for (const rcpt of receipts) {
+    if (!rcpt.month) continue;
+    const row = months.get(rcpt.month) ?? { collection: 0, expected: 0 };
+    row.collection += rcpt.totalPaid || rcpt.amount;
+    months.set(rcpt.month, row);
+  }
+
+  return [...months.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-6)
+    .map(([month, row]) => ({
+      month: month.slice(5),
+      collection: Math.round(row.collection),
+      // Outstanding billed (expected − collected) until a live expenses API exists.
+      expense: Math.round(Math.max(0, row.expected - row.collection)),
+    }));
+}
+
 export default function DashboardPage() {
   const { society, members } = useAuth();
   const today = format(new Date(), "EEEE, d MMMM yyyy");
 
   if (!society) return null;
 
-  const billingMonth = "2026-07";
+  const billingMonth = format(new Date(), "yyyy-MM");
   const stats = invoiceService.stats(society.id, billingMonth);
-  const chartData = financialBySociety[society.id] ?? [];
+  const chartData = liveCollectionSeries(society.id);
 
   return (
     <PageTransition>
