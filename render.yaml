@@ -18,7 +18,9 @@ services:
     runtime: node
     rootDir: api
     plan: starter
-    buildCommand: npm install && npx prisma generate && npm run build
+    # Render builds run with production env, so explicitly include devDependencies
+    # for Nest/TypeScript/Prisma build tooling.
+    buildCommand: npm install --include=dev && npx prisma generate && npm run build
     startCommand: npm run start:prod
     healthCheckPath: /api/v1/health
     envVars:

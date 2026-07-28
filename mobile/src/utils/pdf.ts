@@ -2,6 +2,7 @@
  * Invoice/receipt PDF generation + sharing (expo-print → expo-sharing).
  */
 
+import { Directory, File, Paths } from 'expo-file-system';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
@@ -117,18 +118,53 @@ export async function sharePdf(html: string, _fileName: string): Promise<void> {
   }
 }
 
-/** Save/share PDF for offline access (uses native share sheet → Save to Files). */
-export async function downloadPdf(html: string, fileName: string): Promise<void> {
+/** Save a PDF locally; on iOS also open the native save/share sheet. */
+export async function downloadPdf(html: string, fileName: string): Promise<string> {
   const uri = await renderPdf(html);
   if (Platform.OS === 'web') {
     await Print.printAsync({ html });
-    return;
+    return uri;
   }
+
+  const destination = await persistPdf(uri, fileName);
+
+  if (Platform.OS === 'ios' && (await Sharing.isAvailableAsync())) {
+    // iOS exposes "Save to Files" from the share sheet.
+    await Sharing.shareAsync(destination, {
+      mimeType: 'application/pdf',
+      UTI: 'com.adobe.pdf',
+      dialogTitle: `Save ${fileName}`,
+    });
+  }
+
+  return destination;
+}
+
+async function persistPdf(tempUri: string, fileName: string): Promise<string> {
+  const sanitized = fileName.replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_');
+  const source = new File(tempUri);
+  const localFile = new File(Paths.document, sanitized);
+  localFile.create({ overwrite: true, intermediates: true });
+  source.copy(localFile);
+
+  if (Platform.OS === 'android') {
+    const pickedDir = await Directory.pickDirectoryAsync();
+    const target = pickedDir.createFile(sanitized, 'application/pdf');
+    target.write(await source.bytes());
+    return target.uri;
+  }
+
+  return localFile.uri;
+}
+
+/** Explicit share action. */
+export async function shareSavedPdf(uri: string, fileName: string): Promise<void> {
+  if (Platform.OS === 'web') return;
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, {
       mimeType: 'application/pdf',
       UTI: 'com.adobe.pdf',
-      dialogTitle: `Save ${fileName}`,
+      dialogTitle: `Share ${fileName}`,
     });
   }
 }

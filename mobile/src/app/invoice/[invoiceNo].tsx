@@ -34,6 +34,7 @@ export default function InvoiceDetailScreen() {
   const [sharing, setSharing] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const html = useMemo(() => {
     if (!invoice.data || !settings.data) return '';
@@ -44,6 +45,7 @@ export default function InvoiceDetailScreen() {
     if (!html || !invoice.data) return;
     setSharing(true);
     setActionError(null);
+    setActionSuccess(null);
     try {
       await sharePdf(html, `${invoice.data.invoiceNo}.pdf`);
     } catch (error) {
@@ -57,8 +59,14 @@ export default function InvoiceDetailScreen() {
     if (!html || !invoice.data) return;
     setDownloading(true);
     setActionError(null);
+    setActionSuccess(null);
     try {
-      await downloadPdf(html, `${invoice.data.invoiceNo}.pdf`);
+      const savedUri = await downloadPdf(html, `${invoice.data.invoiceNo}.pdf`);
+      setActionSuccess(
+        savedUri.startsWith('content://')
+          ? 'PDF saved to the folder you selected.'
+          : 'PDF saved on this device for offline viewing.'
+      );
     } catch (error) {
       setActionError(apiErrorMessage(error));
     } finally {
@@ -118,6 +126,11 @@ export default function InvoiceDetailScreen() {
       {actionError ? (
         <AppText variant="caption" style={{ color: theme.error, textAlign: 'center' }}>
           {actionError}
+        </AppText>
+      ) : null}
+      {actionSuccess ? (
+        <AppText variant="caption" style={{ color: theme.success, textAlign: 'center' }}>
+          {actionSuccess}
         </AppText>
       ) : null}
 
