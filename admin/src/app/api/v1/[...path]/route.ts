@@ -49,6 +49,12 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
 
   if (req.method !== "GET" && req.method !== "HEAD") {
     init.body = await req.arrayBuffer();
+    // Required on Node/Vercel when forwarding a request body with fetch().
+    (
+      init as RequestInit & {
+        duplex?: "half";
+      }
+    ).duplex = "half";
   }
 
   let upstream: Response;
