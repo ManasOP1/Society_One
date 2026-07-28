@@ -19,6 +19,13 @@ const HOP_BY_HOP = new Set([
   "content-length",
 ]);
 
+const RESPONSE_EXCLUDE = new Set([
+  ...HOP_BY_HOP,
+  // Undici/Vercel may decode upstream compression before we return the body.
+  // Let Next/Vercel set fresh response transport headers.
+  "content-encoding",
+]);
+
 function resolveTarget(): string {
   const raw = process.env.API_PROXY_TARGET?.trim() || "";
   const stale =
@@ -74,7 +81,7 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
 
   const outHeaders = new Headers();
   upstream.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP.has(key.toLowerCase())) outHeaders.set(key, value);
+    if (!RESPONSE_EXCLUDE.has(key.toLowerCase())) outHeaders.set(key, value);
   });
 
   return new NextResponse(upstream.body, {
