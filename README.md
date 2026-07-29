@@ -6,20 +6,27 @@ Multi-tenant apartment / society management platform.
 
 ```
 SocietyOne/
-├── api/       NestJS REST API + Prisma + Supabase Postgres + Razorpay
-├── admin/     Next.js society admin web console
-├── mobile/    Expo React Native resident app (Android / iOS)
-├── README.md  ← you are here
+├── api/        NestJS REST API + Prisma + Supabase Postgres + Razorpay
+├── admin/      Next.js society admin web console
+├── mobile/     Expo React Native resident app (Android / iOS)
+├── AppIcons/   Source brand icons (copied into mobile/assets + admin/public)
+├── README.md
 └── STRUCTURE.md
 ```
 
 | Folder | What it is | Who uses it | Deploy where |
 |--------|------------|-------------|--------------|
-| **`api/`** | Backend server (NestJS) | Admin + Mobile call this | **[Render](https://render.com)** Web Service |
-| **`admin/`** | Web dashboard (Next.js) | Society admins in browser | **[Vercel](https://vercel.com)** |
+| **`api/`** | Backend server (NestJS) | Admin + Mobile call this | **[Render](https://render.com)** (`Society_One` root: `api`) |
+| **`admin/`** | Web dashboard (Next.js) | Society admins in browser | **[Vercel](https://vercel.com)** (`Society_One_Web`) |
 | **`mobile/`** | Phone app (Expo) | Residents on Android/iOS | **EAS / Play Store / APK** |
+| **`AppIcons/`** | Brand icon pack | Mobile launcher + web favicon | Copied into app assets |
 
-> Naming note: older folders were `backend` (admin UI) and `frontend` (mobile). Those names were confusing — **`admin`** and **`mobile`** are the current names.
+### GitHub remotes
+
+| Remote | Repo | What gets pushed |
+|--------|------|------------------|
+| `origin` | [Society_One](https://github.com/ManasOP1/Society_One) | Full monorepo |
+| `society-web` | [Society_One_Web](https://github.com/ManasOP1/Society_One_Web) | `admin/` contents at repo root (Vercel) |
 
 ---
 

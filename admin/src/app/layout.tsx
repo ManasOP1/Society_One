@@ -22,6 +22,11 @@ export const metadata: Metadata = {
   title: "SocietyOne — Society Management Platform",
   description:
     "Premium society management SaaS for apartment societies. Manage members, finance, events, complaints, and more.",
+  icons: {
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
+  },
 };
 
 export default function RootLayout({
