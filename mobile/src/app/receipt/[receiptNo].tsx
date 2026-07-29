@@ -61,11 +61,7 @@ export default function ReceiptDetailScreen() {
     setActionSuccess(null);
     try {
       const savedUri = await downloadPdf(html, `${receipt.data.receiptNo}.pdf`);
-      setActionSuccess(
-        savedUri.startsWith('content://')
-          ? 'PDF saved to the folder you selected.'
-          : 'PDF saved on this device for offline viewing.'
-      );
+      setActionSuccess('PDF ready — use the share sheet to save or send it.');
     } catch (error) {
       setActionError(apiErrorMessage(error));
     } finally {

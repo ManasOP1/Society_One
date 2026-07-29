@@ -54,6 +54,20 @@ export function formatDate(iso: string | null | undefined): string {
   return `${dd}-${mm}-${d.getFullYear()}`;
 }
 
+/** ISO datetime → "29 Jul · 01:15 pm" (visitor check-in display). */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const date = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+  const time = d.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+  return `${date} · ${time}`;
+}
+
 /** "2026-07" → "July 2026" */
 export function formatMonth(month: string): string {
   const [y, m] = month.split('-').map(Number);

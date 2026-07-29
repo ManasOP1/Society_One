@@ -7,7 +7,7 @@
 # Optional free-tier workaround: ping GET /api/v1/health every 10–14 min (UptimeRobot).
 #
 # After first deploy, set these in Render Dashboard → Environment:
-#   CORS_ORIGINS=https://societyoneadmin-one.vercel.app
+#   CORS_ORIGINS=https://societyoneadmin-one.vercel.app,https://society-one_expo.app
 #   ADMIN_PUBLIC_URL=https://societyoneadmin-one.vercel.app
 #   REDIS_URL=rediss://... (Upstash) — required for billing/PDF/push queues
 # Do NOT leave CORS_ORIGINS blank (empty string disables all browser origins).

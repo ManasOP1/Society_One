@@ -107,29 +107,36 @@ export function receiptHtml(receipt: Receipt, settings: SocietySettings): string
 }
 
 /** Render HTML to PDF and open the native share sheet. */
-export async function sharePdf(html: string, _fileName: string): Promise<void> {
-  const uri = await renderPdf(html);
+export async function sharePdf(html: string, fileName: string): Promise<void> {
   if (Platform.OS === 'web') {
     await Print.printAsync({ html });
     return;
   }
+  const destination = await persistPdf(await renderPdf(html), fileName);
   if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
+    await Sharing.shareAsync(destination, {
+      mimeType: 'application/pdf',
+      UTI: 'com.adobe.pdf',
+      dialogTitle: `Share ${fileName}`,
+    });
+    return;
   }
+  throw new Error('Sharing is not available on this device.');
 }
 
-/** Save a PDF locally; on iOS also open the native save/share sheet. */
+/**
+ * Save PDF to app documents, then open the system share/save sheet
+ * (Files / Drive / Downloads). Avoids fragile Android folder-picker cancel.
+ */
 export async function downloadPdf(html: string, fileName: string): Promise<string> {
-  const uri = await renderPdf(html);
   if (Platform.OS === 'web') {
     await Print.printAsync({ html });
-    return uri;
+    return 'web-print';
   }
 
-  const destination = await persistPdf(uri, fileName);
+  const destination = await persistPdf(await renderPdf(html), fileName);
 
-  if (Platform.OS === 'ios' && (await Sharing.isAvailableAsync())) {
-    // iOS exposes "Save to Files" from the share sheet.
+  if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(destination, {
       mimeType: 'application/pdf',
       UTI: 'com.adobe.pdf',
@@ -147,11 +154,18 @@ async function persistPdf(tempUri: string, fileName: string): Promise<string> {
   localFile.create({ overwrite: true, intermediates: true });
   source.copy(localFile);
 
+  // Optional Android export to a user-chosen folder — never block download if cancelled.
   if (Platform.OS === 'android') {
-    const pickedDir = await Directory.pickDirectoryAsync();
-    const target = pickedDir.createFile(sanitized, 'application/pdf');
-    target.write(await source.bytes());
-    return target.uri;
+    try {
+      const pickedDir = await Directory.pickDirectoryAsync();
+      if (pickedDir) {
+        const target = pickedDir.createFile(sanitized, 'application/pdf');
+        target.write(await localFile.bytes());
+        return target.uri;
+      }
+    } catch {
+      // User cancelled picker — keep app-documents copy + share sheet.
+    }
   }
 
   return localFile.uri;

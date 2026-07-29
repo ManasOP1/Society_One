@@ -1,5 +1,6 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Device from 'expo-device';
+import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
@@ -17,10 +18,14 @@ function isExpoGo(): boolean {
 
 /** Register Expo push token with the API when the user is signed in. */
 export function usePushNotifications(enabled: boolean) {
+  const router = useRouter();
+
   useEffect(() => {
     if (!enabled || !Device.isDevice || isExpoGo()) return;
 
     let cancelled = false;
+    let sub: { remove: () => void } | undefined;
+    let responseSub: { remove: () => void } | undefined;
 
     (async () => {
       // Lazy-load so Expo Go never imports expo-notifications (it throws on load).
@@ -65,10 +70,34 @@ export function usePushNotifications(enabled: boolean) {
         expoToken: token.data,
         platform: Platform.OS,
       });
+
+      responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
+        const data = response.notification.request.content.data as
+          | { type?: string; noticeId?: string; eventId?: string; id?: string }
+          | undefined;
+        if (!data?.type) {
+          router.push('/community');
+          return;
+        }
+        if (data.type === 'visitor') router.push('/visitors');
+        else if (data.type === 'notice') {
+          const noticeId = data.noticeId || data.id;
+          if (noticeId) {
+            router.push({ pathname: '/notice/[id]', params: { id: noticeId } });
+          } else router.push('/community');
+        } else if (data.type === 'event') {
+          const eventId = data.eventId || data.id;
+          if (eventId) {
+            router.push({ pathname: '/event/[id]', params: { id: eventId } });
+          } else router.push('/community');
+        } else router.push('/community');
+      });
     })().catch(() => undefined);
 
     return () => {
       cancelled = true;
+      sub?.remove();
+      responseSub?.remove();
     };
-  }, [enabled]);
+  }, [enabled, router]);
 }

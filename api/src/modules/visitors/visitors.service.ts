@@ -12,6 +12,7 @@ import { AuthUser } from '../../common/decorators/auth.decorators';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { SupabaseStorageService } from '../../infrastructure/supabase/supabase-storage.service';
 import { AuditService } from '../audit/audit.service';
+import { PushNotificationService } from '../notifications/push-notification.service';
 
 export type CreateVisitorInput = {
   name: string;
@@ -80,6 +81,7 @@ export class VisitorsService {
     private readonly audit: AuditService,
     private readonly storage: SupabaseStorageService,
     private readonly config: ConfigService,
+    private readonly push: PushNotificationService,
   ) {}
 
   async list(societyId: string, user: AuthUser) {
@@ -359,9 +361,12 @@ export class VisitorsService {
         categoryCode: this.mapCategory(input.visitType),
         createdByName: input.createdByName?.trim() || 'Gate Guard',
         deviceId: input.deviceId?.slice(0, 128) || null,
-        expectedTime: now.toLocaleTimeString('en-IN', {
+        expectedTime: now.toLocaleString('en-IN', {
+          day: '2-digit',
+          month: 'short',
           hour: '2-digit',
           minute: '2-digit',
+          hour12: true,
         }),
       },
       include: { member: { select: { id: true, ownerName: true } } },
@@ -374,6 +379,18 @@ export class VisitorsService {
         entityType: 'Visitor',
         entityId: visitor.id,
         details: `${visitor.name} → ${flatLabel} (${passNumber})`,
+      })
+      .catch(() => undefined);
+
+    void this.push
+      .notifyFlatResidents(society.id, flat.id, {
+        title: 'Visitor at your flat',
+        body: `${visitor.name} checked in for ${flatLabel}`,
+        data: {
+          type: 'visitor',
+          visitorId: visitor.id,
+          flatId: flat.id,
+        },
       })
       .catch(() => undefined);
 

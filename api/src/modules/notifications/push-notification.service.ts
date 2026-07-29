@@ -43,6 +43,36 @@ export class PushNotificationService {
     await this.sendExpo(tokens.map((t) => t.expoToken), payload);
   }
 
+  /** Notify residents linked to a specific flat (visitor gate check-in). */
+  async notifyFlatResidents(
+    societyId: string,
+    flatId: string,
+    payload: PushPayload,
+  ) {
+    const memberFlats = await this.prisma.memberFlat.findMany({
+      where: { societyId, flatId, deletedAt: null },
+      select: { memberId: true },
+    });
+    const memberIds = [...new Set(memberFlats.map((m) => m.memberId))];
+    if (!memberIds.length) return;
+
+    const tokens = await this.prisma.devicePushToken.findMany({
+      where: {
+        societyId,
+        user: {
+          memberId: { in: memberIds },
+          isActive: true,
+          deletedAt: null,
+        },
+      },
+      select: { expoToken: true },
+    });
+    await this.sendExpo(
+      tokens.map((t) => t.expoToken),
+      payload,
+    );
+  }
+
   /** Notify a single user (e.g. their invoice is ready). */
   async notifyUser(userId: string, payload: PushPayload) {
     const tokens = await this.prisma.devicePushToken.findMany({

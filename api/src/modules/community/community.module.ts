@@ -63,7 +63,7 @@ export class CommunityService {
         .notifySocietyResidents(societyId, {
           title: 'New society notice',
           body: data.title,
-          data: { type: 'notice', id: notice.id },
+          data: { type: 'notice', noticeId: notice.id, id: notice.id },
         })
         .catch(() => undefined);
       return notice;
@@ -160,7 +160,7 @@ export class CommunityService {
         .notifySocietyResidents(societyId, {
           title: 'New society event',
           body: `${data.title} · ${formatEventDate(data.date)}`,
-          data: { type: 'event', id: event.id },
+          data: { type: 'event', eventId: event.id, id: event.id },
         })
         .catch(() => undefined);
       return event;

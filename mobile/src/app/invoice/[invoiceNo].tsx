@@ -62,11 +62,7 @@ export default function InvoiceDetailScreen() {
     setActionSuccess(null);
     try {
       const savedUri = await downloadPdf(html, `${invoice.data.invoiceNo}.pdf`);
-      setActionSuccess(
-        savedUri.startsWith('content://')
-          ? 'PDF saved to the folder you selected.'
-          : 'PDF saved on this device for offline viewing.'
-      );
+      setActionSuccess('PDF ready — use the share sheet to save or send it.');
     } catch (error) {
       setActionError(apiErrorMessage(error));
     } finally {

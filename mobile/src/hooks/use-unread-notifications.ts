@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '@/context/auth';
-import { useEvents, useNotices } from '@/hooks/queries';
+import { useEvents, useNotices, useVisitors } from '@/hooks/queries';
 import {
   loadSeenNotificationIds,
   saveSeenNotificationIds,
@@ -25,13 +25,14 @@ function setSharedSeen(next: Set<string>, ready = true) {
   emit();
 }
 
-/** Unread society notices + events for the bell badge (shared across screens). */
+/** Unread notices + events + flat visitors for the bell badge. */
 export function useUnreadNotifications() {
   const { user } = useAuth();
   const userId = user?.id ?? '';
   const societyId = user?.societyId ?? '';
   const notices = useNotices();
   const events = useEvents();
+  const visitors = useVisitors();
   const [, bump] = useState(0);
 
   useEffect(() => {
@@ -45,12 +46,14 @@ export function useUnreadNotifications() {
   const itemIds = useMemo(() => {
     const noticeIds = (notices.data ?? []).map((n) => n.id).filter(Boolean);
     const eventIds = (events.data ?? []).map((e) => e.id).filter(Boolean);
-    return [...noticeIds, ...eventIds];
-  }, [notices.data, events.data]);
+    const visitorIds = (visitors.data ?? []).map((v) => `visitor:${v.id}`).filter(Boolean);
+    return [...noticeIds, ...eventIds, ...visitorIds];
+  }, [notices.data, events.data, visitors.data]);
 
   const itemKey = itemIds.join('|');
   const scope = `${userId}:${societyId}`;
-  const listsLoaded = !notices.isPending && !events.isPending;
+  const listsLoaded =
+    !notices.isPending && !events.isPending && !visitors.isPending;
 
   useEffect(() => {
     let cancelled = false;
@@ -91,7 +94,6 @@ export function useUnreadNotifications() {
 
   const unreadIds = useMemo(
     () => (sharedReady ? unreadNotificationIds(itemIds, sharedSeen) : []),
-    // bump included so sharedSeen mutations recompute
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [sharedReady, itemKey, bump],
   );

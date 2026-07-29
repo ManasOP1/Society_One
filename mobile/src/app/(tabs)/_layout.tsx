@@ -11,7 +11,7 @@ const TAB_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   index: 'home',
   bills: 'file-text',
   visitors: 'users',
-  community: 'message-circle',
+  community: 'bell',
   profile: 'grid',
 };
 
@@ -63,7 +63,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" options={{ title: 'Home' }} />
       <Tabs.Screen name="bills" options={{ title: 'Bills' }} />
       <Tabs.Screen name="visitors" options={{ title: 'Visitors' }} />
-      <Tabs.Screen name="community" options={{ title: 'Community' }} />
+      <Tabs.Screen name="community" options={{ title: 'Notifications' }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
     </Tabs>
   );

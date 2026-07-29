@@ -1,35 +1,43 @@
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { apiErrorMessage } from '@/api/client';
-import type { SocietyEvent, SocietyNotice } from '@/api/types';
+import type { SocietyEvent, SocietyNotice, SocietyVisitor } from '@/api/types';
 import { AppText } from '@/components/ui/app-text';
 import { OutlineBadge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Screen } from '@/components/ui/screen';
-import { SearchField } from '@/components/ui/search-field';
 import { Segmented } from '@/components/ui/segmented';
 import { ListSkeleton } from '@/components/ui/skeleton';
 import { EmptyState, ErrorState } from '@/components/ui/states';
-import { Radius, Spacing } from '@/constants/theme';
-import { useEvents, useNotices } from '@/hooks/queries';
+import { Brand, Radius, Spacing } from '@/constants/theme';
+import { useEvents, useNotices, useVisitors } from '@/hooks/queries';
 import { isInitialLoad } from '@/hooks/query-ui';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnreadNotifications } from '@/hooks/use-unread-notifications';
-import { formatDate, parseLocalDate } from '@/utils/format';
+import { formatDate, formatDateTime, parseLocalDate } from '@/utils/format';
 
-const TABS = ['Notices', 'Events'] as const;
+const TABS = ['All', 'Notices', 'Visitors', 'Events'] as const;
 type Tab = (typeof TABS)[number];
 
-export default function CommunityScreen() {
-  const [tab, setTab] = useState<Tab>('Notices');
-  const [search, setSearch] = useState('');
-  const { markAllRead } = useUnreadNotifications();
+type FeedItem =
+  | { kind: 'notice'; id: string; sortAt: number; notice: SocietyNotice }
+  | { kind: 'visitor'; id: string; sortAt: number; visitor: SocietyVisitor }
+  | { kind: 'event'; id: string; sortAt: number; event: SocietyEvent };
 
-  // Leaving Community after viewing = notifications read → clear bell badge.
+export default function NotificationsScreen() {
+  const [tab, setTab] = useState<Tab>('All');
+  const { markAllRead, unreadCount } = useUnreadNotifications();
+  const notices = useNotices();
+  const events = useEvents();
+  const visitors = useVisitors();
+  const { isUnread } = useUnreadNotifications();
+  const router = useRouter();
+
   useFocusEffect(
     useCallback(() => {
       return () => {
@@ -38,61 +46,117 @@ export default function CommunityScreen() {
     }, [markAllRead]),
   );
 
-  const props = { tab, setTab, search, setSearch };
-  return tab === 'Notices' ? <NoticesTab {...props} /> : <EventsTab {...props} />;
-}
+  const feed = useMemo(() => {
+    const items: FeedItem[] = [
+      ...(notices.data ?? []).map((notice) => ({
+        kind: 'notice' as const,
+        id: notice.id,
+        sortAt: Date.parse(notice.publishedAt || notice.createdAt || '') || 0,
+        notice,
+      })),
+      ...(visitors.data ?? []).map((visitor) => ({
+        kind: 'visitor' as const,
+        id: `visitor:${visitor.id}`,
+        sortAt: Date.parse(visitor.checkInAt || visitor.createdAt || '') || 0,
+        visitor,
+      })),
+      ...(events.data ?? []).map((event) => ({
+        kind: 'event' as const,
+        id: event.id,
+        sortAt: Date.parse(event.date || event.createdAt || '') || 0,
+        event,
+      })),
+    ];
+    items.sort((a, b) => b.sortAt - a.sortAt);
+    if (tab === 'Notices') return items.filter((i) => i.kind === 'notice');
+    if (tab === 'Visitors') return items.filter((i) => i.kind === 'visitor');
+    if (tab === 'Events') return items.filter((i) => i.kind === 'event');
+    return items;
+  }, [notices.data, visitors.data, events.data, tab]);
 
-type HeaderProps = {
-  tab: Tab;
-  setTab: (t: Tab) => void;
-  search: string;
-  setSearch: (s: string) => void;
-};
+  const loading =
+    isInitialLoad(notices) || isInitialLoad(events) || isInitialLoad(visitors);
+  const error = notices.isError || events.isError || visitors.isError;
 
-function Header({ tab, setTab, search, setSearch }: HeaderProps) {
-  return (
-    <>
-      <AppText variant="title">Community</AppText>
-      <SearchField value={search} onChangeText={setSearch} placeholder={`Search ${tab.toLowerCase()}...`} />
-      <Segmented options={TABS} value={tab} onChange={setTab} />
-    </>
-  );
-}
-
-function matches(search: string, ...fields: string[]) {
-  const q = search.trim().toLowerCase();
-  return !q || fields.some((f) => f.toLowerCase().includes(q));
-}
-
-/* -------------------------------- Notices ------------------------------- */
-
-function NoticesTab(props: HeaderProps) {
-  const notices = useNotices();
-  const { isUnread } = useUnreadNotifications();
-  const filtered = useMemo(
-    () => (notices.data ?? []).filter((n) => matches(props.search, n.title, n.body)),
-    [notices.data, props.search]
-  );
   return (
     <Screen topInset tabbed>
-      <Header {...props} />
-      {isInitialLoad(notices) ? (
-        <ListSkeleton rows={4} />
-      ) : notices.isError ? (
-        <ErrorState message={apiErrorMessage(notices.error)} onRetry={() => notices.refetch()} />
-      ) : filtered.length === 0 ? (
+      <View style={styles.titleRow}>
+        <View style={{ flex: 1 }}>
+          <AppText variant="title">Notifications</AppText>
+          <AppText variant="body" color="textSecondary" style={{ marginTop: -Spacing.one }}>
+            Notices, visitors for your flat, and events
+          </AppText>
+        </View>
+        {unreadCount > 0 ? (
+          <Button
+            title="Mark all read"
+            variant="outline"
+            onPress={() => void markAllRead()}
+          />
+        ) : null}
+      </View>
+
+      <Segmented options={TABS} value={tab} onChange={setTab} />
+
+      {loading ? (
+        <ListSkeleton rows={5} />
+      ) : error ? (
+        <ErrorState
+          message={apiErrorMessage(notices.error ?? events.error ?? visitors.error)}
+          onRetry={() => {
+            void notices.refetch();
+            void events.refetch();
+            void visitors.refetch();
+          }}
+        />
+      ) : feed.length === 0 ? (
         <EmptyState
           icon="bell"
-          title="No notices"
-          message={props.search ? 'No notices match your search.' : 'Society announcements will appear here.'}
+          title="You're all caught up"
+          message="New notices and visitors for your room will show up here."
         />
       ) : (
         <View style={{ gap: Spacing.onehalf }}>
-          {filtered.map((notice) => (
-            <NoticeRow key={notice.id} notice={notice} unread={isUnread(notice.id)} />
-          ))}
+          {feed.map((item) => {
+            if (item.kind === 'notice') {
+              return (
+                <NoticeRow
+                  key={item.id}
+                  notice={item.notice}
+                  unread={isUnread(item.id)}
+                />
+              );
+            }
+            if (item.kind === 'visitor') {
+              return (
+                <VisitorNotifRow
+                  key={item.id}
+                  visitor={item.visitor}
+                  unread={isUnread(item.id)}
+                  onPress={() => router.push('/visitors')}
+                />
+              );
+            }
+            return (
+              <EventRow
+                key={item.id}
+                event={item.event}
+                unread={isUnread(item.id)}
+              />
+            );
+          })}
         </View>
       )}
+
+      {tab === 'All' ? (
+        <AppText
+          variant="caption"
+          color="textSecondary"
+          style={{ textAlign: 'center', marginTop: Spacing.one }}
+        >
+          Push alerts also arrive when a visitor checks in to your flat.
+        </AppText>
+      ) : null}
     </Screen>
   );
 }
@@ -102,43 +166,33 @@ function NoticeRow({ notice, unread }: { notice: SocietyNotice; unread: boolean 
   return (
     <Link href={{ pathname: '/notice/[id]', params: { id: notice.id } }} asChild>
       <Pressable>
-        <Card style={{ gap: Spacing.onehalf }}>
+        <Card style={[styles.card, unread && { borderColor: Brand.lime, borderWidth: 1.5 }]}>
           <View style={styles.cardHeader}>
-            <View style={[styles.iconCircle, { backgroundColor: theme.cardMuted }]}>
-              <Feather name="bell" size={18} color={theme.text} />
+            <View style={[styles.iconCircle, { backgroundColor: theme.infoSoft }]}>
+              <Feather name="bell" size={18} color={theme.info} />
               {unread ? <View style={[styles.unreadDot, { backgroundColor: theme.error }]} /> : null}
             </View>
-            <View style={{ flex: 1, gap: 1 }}>
+            <View style={{ flex: 1, gap: 2 }}>
               <AppText variant="bodySemi" numberOfLines={1}>
                 {notice.title}
               </AppText>
-              <AppText variant="caption" color="textSecondary">
-                Society Office
+              <AppText variant="caption" color="textSecondary" numberOfLines={2}>
+                {notice.body}
               </AppText>
             </View>
-            {notice.pinned ? (
-              <OutlineBadge label="Pinned" icon="star" color={theme.warning} />
-            ) : unread ? (
+            {unread ? (
               <OutlineBadge label="New" color={theme.error} />
-            ) : (
-              <OutlineBadge label="Published" />
-            )}
+            ) : notice.pinned ? (
+              <OutlineBadge label="Pinned" icon="star" color={theme.warning} />
+            ) : null}
           </View>
-          <AppText variant="body" color="textSecondary" numberOfLines={2}>
-            {notice.body}
-          </AppText>
-          <View style={styles.cardFooter}>
-            <View style={[styles.categoryChip, { backgroundColor: theme.cardMuted }]}>
-              <AppText variant="caption" color="textSecondary">
-                Notice
-              </AppText>
-            </View>
-            <View style={styles.timeRow}>
-              <Feather name="clock" size={13} color={theme.textSecondary} />
-              <AppText variant="caption" color="textSecondary">
-                {formatDate(notice.publishedAt)}
-              </AppText>
-            </View>
+          <View style={styles.footer}>
+            <AppText variant="caption" color="textSecondary">
+              Notice
+            </AppText>
+            <AppText variant="caption" color="textSecondary">
+              {formatDate(notice.publishedAt)}
+            </AppText>
           </View>
         </Card>
       </Pressable>
@@ -146,36 +200,55 @@ function NoticeRow({ notice, unread }: { notice: SocietyNotice; unread: boolean 
   );
 }
 
-/* --------------------------------- Events ------------------------------- */
-
-function EventsTab(props: HeaderProps) {
-  const events = useEvents();
-  const { isUnread } = useUnreadNotifications();
-  const filtered = useMemo(
-    () => (events.data ?? []).filter((e) => matches(props.search, e.title, e.location, e.description)),
-    [events.data, props.search]
-  );
+function VisitorNotifRow({
+  visitor,
+  unread,
+  onPress,
+}: {
+  visitor: SocietyVisitor;
+  unread: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  const when = visitor.checkInAt
+    ? formatDateTime(visitor.checkInAt)
+    : formatDateTime(visitor.createdAt);
   return (
-    <Screen topInset tabbed>
-      <Header {...props} />
-      {isInitialLoad(events) ? (
-        <ListSkeleton rows={4} />
-      ) : events.isError ? (
-        <ErrorState message={apiErrorMessage(events.error)} onRetry={() => events.refetch()} />
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon="calendar"
-          title="No events"
-          message={props.search ? 'No events match your search.' : 'Society events will appear here.'}
-        />
-      ) : (
-        <View style={{ gap: Spacing.onehalf }}>
-          {filtered.map((event) => (
-            <EventRow key={event.id} event={event} unread={isUnread(event.id)} />
-          ))}
+    <Pressable onPress={onPress}>
+      <Card style={[styles.card, unread && { borderColor: Brand.lime, borderWidth: 1.5 }]}>
+        <View style={styles.cardHeader}>
+          <View style={[styles.iconCircle, { backgroundColor: theme.successSoft, overflow: 'hidden' }]}>
+            {visitor.photoUrl ? (
+              <Image source={{ uri: visitor.photoUrl }} style={styles.thumb} />
+            ) : (
+              <Feather name="user-check" size={18} color={theme.success} />
+            )}
+            {unread ? <View style={[styles.unreadDot, { backgroundColor: theme.error }]} /> : null}
+          </View>
+          <View style={{ flex: 1, gap: 2 }}>
+            <AppText variant="bodySemi" numberOfLines={1}>
+              {visitor.name} arrived
+            </AppText>
+            <AppText variant="caption" color="textSecondary" numberOfLines={2}>
+              {[visitor.visitType || visitor.purpose, visitor.companyName, `Flat ${visitor.flat}`]
+                .filter(Boolean)
+                .join(' · ')}
+            </AppText>
+          </View>
+          {unread ? <OutlineBadge label="New" color={theme.error} /> : (
+            <OutlineBadge label={visitor.status || 'Inside'} color={theme.success} />
+          )}
         </View>
-      )}
-    </Screen>
+        <View style={styles.footer}>
+          <AppText variant="caption" color="textSecondary">
+            Visitor
+          </AppText>
+          <AppText variant="caption" color="textSecondary">
+            {when}
+          </AppText>
+        </View>
+      </Card>
+    </Pressable>
   );
 }
 
@@ -186,17 +259,16 @@ function EventRow({ event, unread }: { event: SocietyEvent; unread: boolean }) {
   const monthLabel = Number.isNaN(date.getTime())
     ? '—'
     : date.toLocaleString('en', { month: 'short' });
-  const done = event.status === 'Completed';
   return (
     <Link href={{ pathname: '/event/[id]', params: { id: event.id } }} asChild>
       <Pressable>
-        <Card style={{ gap: Spacing.onehalf }}>
+        <Card style={[styles.card, unread && { borderColor: Brand.lime, borderWidth: 1.5 }]}>
           <View style={styles.cardHeader}>
-            <View style={[styles.dateBox, { backgroundColor: done ? theme.cardMuted : theme.surfaceDark }]}>
-              <AppText variant="heading" style={{ color: done ? theme.textSecondary : theme.accent }}>
+            <View style={[styles.dateBox, { backgroundColor: theme.surfaceDark }]}>
+              <AppText variant="heading" style={{ color: theme.accent }}>
                 {dayLabel}
               </AppText>
-              <AppText variant="caption" style={{ color: done ? theme.textSecondary : theme.accent }}>
+              <AppText variant="caption" style={{ color: theme.accent }}>
                 {monthLabel}
               </AppText>
               {unread ? <View style={[styles.unreadDot, { backgroundColor: theme.error }]} /> : null}
@@ -205,47 +277,23 @@ function EventRow({ event, unread }: { event: SocietyEvent; unread: boolean }) {
               <AppText variant="bodySemi" numberOfLines={1}>
                 {event.title}
               </AppText>
-              <View style={styles.timeRow}>
-                <Feather name="map-pin" size={12} color={theme.textSecondary} />
-                <AppText variant="caption" color="textSecondary" numberOfLines={1}>
-                  {event.location}
-                </AppText>
-              </View>
+              <AppText variant="caption" color="textSecondary" numberOfLines={1}>
+                {event.location}
+              </AppText>
             </View>
-            <OutlineBadge
-              label={unread ? 'New' : event.status}
-              icon={
-                unread
-                  ? 'bell'
-                  : done
-                    ? 'check-circle'
-                    : event.status === 'Ongoing'
-                      ? 'zap'
-                      : 'clock'
-              }
-              color={
-                unread
-                  ? theme.error
-                  : done
-                    ? undefined
-                    : event.status === 'Ongoing'
-                      ? theme.success
-                      : theme.text
-              }
-            />
+            {unread ? (
+              <OutlineBadge label="New" color={theme.error} />
+            ) : (
+              <OutlineBadge label={event.status} />
+            )}
           </View>
-          <View style={styles.cardFooter}>
-            <View style={[styles.categoryChip, { backgroundColor: theme.cardMuted }]}>
-              <AppText variant="caption" color="textSecondary">
-                Event
-              </AppText>
-            </View>
-            <View style={styles.timeRow}>
-              <Feather name="clock" size={13} color={theme.textSecondary} />
-              <AppText variant="caption" color="textSecondary">
-                {formatDate(event.date)}
-              </AppText>
-            </View>
+          <View style={styles.footer}>
+            <AppText variant="caption" color="textSecondary">
+              Event
+            </AppText>
+            <AppText variant="caption" color="textSecondary">
+              {formatDate(event.date)}
+            </AppText>
           </View>
         </Card>
       </Pressable>
@@ -254,14 +302,21 @@ function EventRow({ event, unread }: { event: SocietyEvent; unread: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.one,
+  },
+  card: { gap: Spacing.one },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.onehalf },
   iconCircle: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  thumb: { width: 48, height: 48 },
   unreadDot: {
     position: 'absolute',
     top: 2,
@@ -279,15 +334,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardFooter: {
+  footer: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  categoryChip: {
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.onehalf,
-    paddingVertical: 5,
-  },
-  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
 });
