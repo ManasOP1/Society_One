@@ -88,14 +88,18 @@ export class PushNotificationService {
 
     for (let i = 0; i < unique.length; i += 100) {
       const batch = unique.slice(i, i + 100);
+      // High-priority Expo push — delivered to tray even when app is killed
+      // (same pattern as food-delivery apps), as long as device token is registered.
       const messages = batch.map((to) => ({
         to,
-        sound: 'default',
+        sound: 'default' as const,
         title: payload.title,
         body: payload.body,
         data: payload.data ?? {},
-        priority: 'high',
+        priority: 'high' as const,
         channelId: 'societyone-alerts',
+        ttl: 60 * 60 * 24 * 7,
+        _contentAvailable: true,
       }));
 
       try {
@@ -104,11 +108,24 @@ export class PushNotificationService {
           headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json',
+            'Accept-Encoding': 'gzip, deflate',
           },
           body: JSON.stringify(messages),
         });
         if (!res.ok) {
           this.logger.warn(`Expo push failed: ${res.status} ${await res.text()}`);
+          continue;
+        }
+        const json = (await res.json()) as {
+          data?: Array<{ status?: string; message?: string; details?: unknown }>;
+        };
+        const tickets = Array.isArray(json.data) ? json.data : [];
+        for (const ticket of tickets) {
+          if (ticket.status === 'error') {
+            this.logger.warn(
+              `Expo push ticket error: ${ticket.message ?? 'unknown'} ${JSON.stringify(ticket.details ?? {})}`,
+            );
+          }
         }
       } catch (error) {
         this.logger.warn(

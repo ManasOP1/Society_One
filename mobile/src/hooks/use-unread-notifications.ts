@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Platform } from 'react-native';
 
 import { useAuth } from '@/context/auth';
 import { useEvents, useNotices, useVisitors } from '@/hooks/queries';
@@ -14,8 +15,10 @@ const listeners = new Set<Listener>();
 let sharedSeen = new Set<string>();
 let sharedScope = '';
 let sharedReady = false;
+let sharedVersion = 0;
 
 function emit() {
+  sharedVersion += 1;
   listeners.forEach((l) => l());
 }
 
@@ -23,6 +26,15 @@ function setSharedSeen(next: Set<string>, ready = true) {
   sharedSeen = next;
   sharedReady = ready;
   emit();
+}
+
+async function syncOsBadge(count: number) {
+  try {
+    const Notifications = await import('expo-notifications');
+    await Notifications.setBadgeCountAsync(Math.max(0, count));
+  } catch {
+    // Expo Go / web may not support badge APIs.
+  }
 }
 
 /** Unread notices + events + flat visitors for the bell badge. */
@@ -33,10 +45,10 @@ export function useUnreadNotifications() {
   const notices = useNotices();
   const events = useEvents();
   const visitors = useVisitors();
-  const [, bump] = useState(0);
+  const [version, setVersion] = useState(sharedVersion);
 
   useEffect(() => {
-    const onChange = () => bump((n) => n + 1);
+    const onChange = () => setVersion(sharedVersion);
     listeners.add(onChange);
     return () => {
       listeners.delete(onChange);
@@ -46,7 +58,9 @@ export function useUnreadNotifications() {
   const itemIds = useMemo(() => {
     const noticeIds = (notices.data ?? []).map((n) => n.id).filter(Boolean);
     const eventIds = (events.data ?? []).map((e) => e.id).filter(Boolean);
-    const visitorIds = (visitors.data ?? []).map((v) => `visitor:${v.id}`).filter(Boolean);
+    const visitorIds = (visitors.data ?? [])
+      .map((v) => `visitor:${v.id}`)
+      .filter(Boolean);
     return [...noticeIds, ...eventIds, ...visitorIds];
   }, [notices.data, events.data, visitors.data]);
 
@@ -77,6 +91,7 @@ export function useUnreadNotifications() {
       if (cancelled) return;
 
       if (stored == null) {
+        // First launch: seed current items as seen so only NEW ones show unread.
         const seed = new Set(itemIds);
         await saveSeenNotificationIds(userId, societyId, seed);
         if (cancelled) return;
@@ -94,11 +109,17 @@ export function useUnreadNotifications() {
 
   const unreadIds = useMemo(
     () => (sharedReady ? unreadNotificationIds(itemIds, sharedSeen) : []),
+    // version must change whenever sharedSeen mutates
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sharedReady, itemKey, bump],
+    [sharedReady, itemKey, version],
   );
 
   const unreadCount = unreadIds.length;
+
+  useEffect(() => {
+    if (!sharedReady || Platform.OS === 'web') return;
+    void syncOsBadge(unreadCount);
+  }, [unreadCount, sharedReady, version]);
 
   const markRead = useCallback(
     async (id: string) => {
@@ -121,9 +142,10 @@ export function useUnreadNotifications() {
   }, [userId, societyId, itemIds]);
 
   const isUnread = useCallback(
-    (id: string) => sharedReady && Boolean(id) && !sharedSeen.has(id) && itemIds.includes(id),
+    (id: string) =>
+      sharedReady && Boolean(id) && !sharedSeen.has(id) && itemIds.includes(id),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sharedReady, itemKey, bump],
+    [sharedReady, itemKey, version],
   );
 
   return {

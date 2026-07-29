@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons';
+﻿import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Link, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
@@ -8,7 +8,6 @@ import { apiErrorMessage } from '@/api/client';
 import type { SocietyEvent, SocietyNotice, SocietyVisitor } from '@/api/types';
 import { AppText } from '@/components/ui/app-text';
 import { OutlineBadge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Screen } from '@/components/ui/screen';
 import { Segmented } from '@/components/ui/segmented';
@@ -31,19 +30,20 @@ type FeedItem =
 
 export default function NotificationsScreen() {
   const [tab, setTab] = useState<Tab>('All');
-  const { markAllRead, unreadCount } = useUnreadNotifications();
+  const { markAllRead, markRead, unreadCount, isUnread } = useUnreadNotifications();
   const notices = useNotices();
   const events = useEvents();
   const visitors = useVisitors();
-  const { isUnread } = useUnreadNotifications();
   const router = useRouter();
 
+  // Refresh lists when opening Notifications; badge drops only when user
+  // opens an item or taps Mark read (not automatically on leaving).
   useFocusEffect(
     useCallback(() => {
-      return () => {
-        void markAllRead();
-      };
-    }, [markAllRead]),
+      void notices.refetch();
+      void events.refetch();
+      void visitors.refetch();
+    }, [notices.refetch, events.refetch, visitors.refetch]),
   );
 
   const feed = useMemo(() => {
@@ -84,15 +84,22 @@ export default function NotificationsScreen() {
         <View style={{ flex: 1 }}>
           <AppText variant="title">Notifications</AppText>
           <AppText variant="body" color="textSecondary" style={{ marginTop: -Spacing.one }}>
-            Notices, visitors for your flat, and events
+            Updates for your flat and society
           </AppText>
         </View>
         {unreadCount > 0 ? (
-          <Button
-            title="Mark all read"
-            variant="outline"
+          <Pressable
             onPress={() => void markAllRead()}
-          />
+            style={({ pressed }) => [
+              styles.markReadChip,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <Feather name="check" size={14} color={Brand.ink} />
+            <AppText variant="caption" style={{ color: Brand.ink }}>
+              Mark read
+            </AppText>
+          </Pressable>
         ) : null}
       </View>
 
@@ -116,7 +123,7 @@ export default function NotificationsScreen() {
           message="New notices and visitors for your room will show up here."
         />
       ) : (
-        <View style={{ gap: Spacing.onehalf }}>
+        <View style={{ gap: Spacing.one }}>
           {feed.map((item) => {
             if (item.kind === 'notice') {
               return (
@@ -124,6 +131,7 @@ export default function NotificationsScreen() {
                   key={item.id}
                   notice={item.notice}
                   unread={isUnread(item.id)}
+                  onOpen={() => void markRead(item.id)}
                 />
               );
             }
@@ -133,7 +141,10 @@ export default function NotificationsScreen() {
                   key={item.id}
                   visitor={item.visitor}
                   unread={isUnread(item.id)}
-                  onPress={() => router.push('/visitors')}
+                  onPress={() => {
+                    void markRead(item.id);
+                    router.push('/visitors');
+                  }}
                 />
               );
             }
@@ -142,31 +153,32 @@ export default function NotificationsScreen() {
                 key={item.id}
                 event={item.event}
                 unread={isUnread(item.id)}
+                onOpen={() => void markRead(item.id)}
               />
             );
           })}
         </View>
       )}
 
-      {tab === 'All' ? (
-        <AppText
-          variant="caption"
-          color="textSecondary"
-          style={{ textAlign: 'center', marginTop: Spacing.one }}
-        >
-          Push alerts also arrive when a visitor checks in to your flat.
-        </AppText>
-      ) : null}
+      {tab === 'All' ? null : null}
     </Screen>
   );
 }
 
-function NoticeRow({ notice, unread }: { notice: SocietyNotice; unread: boolean }) {
+function NoticeRow({
+  notice,
+  unread,
+  onOpen,
+}: {
+  notice: SocietyNotice;
+  unread: boolean;
+  onOpen: () => void;
+}) {
   const theme = useTheme();
   return (
     <Link href={{ pathname: '/notice/[id]', params: { id: notice.id } }} asChild>
-      <Pressable>
-        <Card style={[styles.card, unread && { borderColor: Brand.lime, borderWidth: 1.5 }]}>
+      <Pressable onPress={onOpen}>
+        <Card style={[styles.card, unread && styles.unreadCard]}>
           <View style={styles.cardHeader}>
             <View style={[styles.iconCircle, { backgroundColor: theme.infoSoft }]}>
               <Feather name="bell" size={18} color={theme.info} />
@@ -180,10 +192,10 @@ function NoticeRow({ notice, unread }: { notice: SocietyNotice; unread: boolean 
                 {notice.body}
               </AppText>
             </View>
-            {unread ? (
-              <OutlineBadge label="New" color={theme.error} />
-            ) : notice.pinned ? (
+            {notice.pinned ? (
               <OutlineBadge label="Pinned" icon="star" color={theme.warning} />
+            ) : unread ? (
+              <OutlineBadge label="New" color={theme.error} />
             ) : null}
           </View>
           <View style={styles.footer}>
@@ -215,7 +227,7 @@ function VisitorNotifRow({
     : formatDateTime(visitor.createdAt);
   return (
     <Pressable onPress={onPress}>
-      <Card style={[styles.card, unread && { borderColor: Brand.lime, borderWidth: 1.5 }]}>
+      <Card style={[styles.card, unread && styles.unreadCard]}>
         <View style={styles.cardHeader}>
           <View style={[styles.iconCircle, { backgroundColor: theme.successSoft, overflow: 'hidden' }]}>
             {visitor.photoUrl ? (
@@ -227,16 +239,18 @@ function VisitorNotifRow({
           </View>
           <View style={{ flex: 1, gap: 2 }}>
             <AppText variant="bodySemi" numberOfLines={1}>
-              {visitor.name} arrived
+              {visitor.name}
             </AppText>
             <AppText variant="caption" color="textSecondary" numberOfLines={2}>
-              {[visitor.visitType || visitor.purpose, visitor.companyName, `Flat ${visitor.flat}`]
+              {[visitor.visitType || visitor.purpose, `Flat ${visitor.flat}`]
                 .filter(Boolean)
                 .join(' · ')}
             </AppText>
           </View>
-          {unread ? <OutlineBadge label="New" color={theme.error} /> : (
-            <OutlineBadge label={visitor.status || 'Inside'} color={theme.success} />
+          {unread ? (
+            <OutlineBadge label="New" color={theme.error} />
+          ) : (
+            <OutlineBadge label="Visitor" color={theme.success} />
           )}
         </View>
         <View style={styles.footer}>
@@ -252,7 +266,15 @@ function VisitorNotifRow({
   );
 }
 
-function EventRow({ event, unread }: { event: SocietyEvent; unread: boolean }) {
+function EventRow({
+  event,
+  unread,
+  onOpen,
+}: {
+  event: SocietyEvent;
+  unread: boolean;
+  onOpen: () => void;
+}) {
   const theme = useTheme();
   const date = parseLocalDate(event.date);
   const dayLabel = Number.isNaN(date.getTime()) ? '—' : String(date.getDate());
@@ -261,8 +283,8 @@ function EventRow({ event, unread }: { event: SocietyEvent; unread: boolean }) {
     : date.toLocaleString('en', { month: 'short' });
   return (
     <Link href={{ pathname: '/event/[id]', params: { id: event.id } }} asChild>
-      <Pressable>
-        <Card style={[styles.card, unread && { borderColor: Brand.lime, borderWidth: 1.5 }]}>
+      <Pressable onPress={onOpen}>
+        <Card style={[styles.card, unread && styles.unreadCard]}>
           <View style={styles.cardHeader}>
             <View style={[styles.dateBox, { backgroundColor: theme.surfaceDark }]}>
               <AppText variant="heading" style={{ color: theme.accent }}>
@@ -304,19 +326,32 @@ function EventRow({ event, unread }: { event: SocietyEvent; unread: boolean }) {
 const styles = StyleSheet.create({
   titleRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: Spacing.one,
   },
-  card: { gap: Spacing.one },
+  markReadChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.onehalf,
+    paddingVertical: 8,
+    backgroundColor: '#EFF8CD',
+  },
+  card: { gap: Spacing.one, padding: Spacing.onehalf + 10 },
+  unreadCard: {
+    borderColor: Brand.lime,
+    borderWidth: 1.5,
+  },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.onehalf },
   iconCircle: {
-    width: 48,
-    height: 48,
+    width: 46,
+    height: 46,
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  thumb: { width: 48, height: 48 },
+  thumb: { width: 46, height: 46 },
   unreadDot: {
     position: 'absolute',
     top: 2,

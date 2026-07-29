@@ -6,13 +6,12 @@ import { StyleSheet, View } from 'react-native';
 import { apiErrorMessage } from '@/api/client';
 import type { SocietyVisitor } from '@/api/types';
 import { AppText } from '@/components/ui/app-text';
-import { OutlineBadge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Screen } from '@/components/ui/screen';
 import { Segmented } from '@/components/ui/segmented';
 import { ListSkeleton } from '@/components/ui/skeleton';
 import { EmptyState, ErrorState } from '@/components/ui/states';
-import { Brand, Radius, Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useVisitors } from '@/hooks/queries';
 import { isInitialLoad } from '@/hooks/query-ui';
 import { useTheme } from '@/hooks/use-theme';
@@ -53,6 +52,10 @@ function iconFor(category: Exclude<Filter, 'All'>): keyof typeof Feather.glyphMa
   if (category === 'Parcel') return 'package';
   if (category === 'Helpers') return 'tool';
   return 'user';
+}
+
+function categoryLabel(visitor: SocietyVisitor): string {
+  return visitor.visitType || categoryOf(visitor);
 }
 
 function checkInLabel(visitor: SocietyVisitor): string {
@@ -106,16 +109,14 @@ export default function VisitorsScreen() {
 
 function VisitorRow({ visitor }: { visitor: SocietyVisitor }) {
   const theme = useTheme();
-  const category = categoryOf(visitor);
+  const categoryKind = categoryOf(visitor);
   const vehicle =
     visitor.vehicleNo
       ? `${visitor.vehicleType || ''} ${visitor.vehicleNo}`.trim()
       : visitor.vehicle && visitor.vehicle !== '—'
         ? visitor.vehicle
         : null;
-  const purpose = [visitor.visitType || visitor.purpose, visitor.companyName]
-    .filter(Boolean)
-    .join(' · ');
+  const category = categoryLabel(visitor);
 
   return (
     <Card style={styles.card}>
@@ -129,49 +130,40 @@ function VisitorRow({ visitor }: { visitor: SocietyVisitor }) {
               transition={200}
             />
           ) : (
-            <Feather name={iconFor(category)} size={22} color={theme.textSecondary} />
+            <Feather name={iconFor(categoryKind)} size={22} color={theme.textSecondary} />
           )}
         </View>
 
         <View style={styles.main}>
-          <View style={styles.nameRow}>
-            <AppText variant="bodySemi" numberOfLines={1} style={{ flex: 1 }}>
-              {visitor.name}
-            </AppText>
-            <OutlineBadge label={visitor.status || 'Inside'} color={theme.success} />
-          </View>
-          <AppText variant="caption" color="textSecondary" numberOfLines={2}>
-            {purpose}
+          <AppText variant="bodySemi" numberOfLines={1}>
+            {visitor.name}
           </AppText>
           <AppText variant="caption" color="textSecondary" numberOfLines={1}>
-            Flat {visitor.flat}
+            {category}
           </AppText>
-        </View>
-      </View>
-
-      <View style={[styles.metaBar, { backgroundColor: theme.cardMuted }]}>
-        {visitor.passNumber ? (
-          <View style={styles.metaItem}>
-            <Feather name="hash" size={12} color={theme.textSecondary} />
-            <AppText variant="caption" color="textSecondary">
-              {visitor.passNumber}
-            </AppText>
+          <View style={styles.inlineMeta}>
+            <View style={styles.metaItem}>
+              <Feather name="home" size={12} color={theme.textSecondary} />
+              <AppText variant="caption" color="textSecondary" numberOfLines={1}>
+                Flat {visitor.flat}
+              </AppText>
+            </View>
+            <View style={styles.metaItem}>
+              <Feather name="clock" size={12} color={theme.textSecondary} />
+              <AppText variant="caption" color="textSecondary" numberOfLines={1}>
+                {checkInLabel(visitor)}
+              </AppText>
+            </View>
           </View>
-        ) : null}
-        <View style={styles.metaItem}>
-          <Feather name="clock" size={12} color={Brand.ink} />
-          <AppText variant="caption" style={{ color: Brand.ink, fontWeight: '600' }}>
-            {checkInLabel(visitor)}
-          </AppText>
+          {vehicle ? (
+            <View style={styles.metaItem}>
+              <Feather name="truck" size={12} color={theme.textSecondary} />
+              <AppText variant="caption" color="textSecondary" numberOfLines={1}>
+                {vehicle}
+              </AppText>
+            </View>
+          ) : null}
         </View>
-        {vehicle ? (
-          <View style={styles.metaItem}>
-            <Feather name="truck" size={12} color={theme.textSecondary} />
-            <AppText variant="caption" color="textSecondary" numberOfLines={1}>
-              {vehicle}
-            </AppText>
-          </View>
-        ) : null}
       </View>
     </Card>
   );
@@ -189,15 +181,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   photo: { width: '100%', height: '100%' },
-  main: { flex: 1, gap: 3, minWidth: 0 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
-  metaBar: {
+  main: { flex: 1, gap: 4, minWidth: 0 },
+  inlineMeta: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.onehalf,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.onehalf,
-    paddingVertical: Spacing.one,
+    gap: Spacing.one,
   },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
 });
