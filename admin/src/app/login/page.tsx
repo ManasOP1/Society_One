@@ -78,15 +78,15 @@ export default function LoginPage() {
           </div>
           <div>
             <h2 className="text-2xl font-bold leading-snug">
-              Society ops console — one building at a time.
+              Manage your society, effortlessly.
             </h2>
             <p className="mt-3 text-sm text-indigo-100">
-              This admin panel is the society backend. The resident experience
-              will live in a separate app that talks to the same APIs.
+              Billing, visitors, complaints, and more — all in one place for
+              your housing society committee.
             </p>
           </div>
           <p className="text-xs text-indigo-200">
-            Seeded account: <strong>admin@greenvalley.in</strong> / admin123
+            © {new Date().getFullYear()} SocietyOne
           </p>
         </div>
 
