@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { format } from "date-fns";
+import { useEffect, useState, useTransition } from "react";
 import { useAuth } from "@/context/auth-context";
+import { dashboardApi, reportsApi } from "@/lib/api-client";
 import { invoiceService } from "@/services/invoice.service";
-import { receiptService } from "@/services/payment.service";
 import { HeroStats } from "@/components/dashboard/hero-stats";
 import { FeaturedEvent } from "@/components/dashboard/featured-event";
 import { CalendarWidget } from "@/components/dashboard/calendar-widget";
@@ -15,46 +16,62 @@ import { PageTransition } from "@/components/shared/page-transition";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 
-function liveCollectionSeries(societyId: string) {
-  const invoices = invoiceService
-    .list(societyId)
-    .filter((i) => i.status !== "Cancelled");
-  const receipts = receiptService.list(societyId);
-  const months = new Map<string, { collection: number; expected: number }>();
+type DashboardSummary = {
+  outstandingTotal: number;
+  pendingInvoices: number;
+};
 
-  for (const inv of invoices) {
-    if (!inv.month) continue;
-    const row = months.get(inv.month) ?? { collection: 0, expected: 0 };
-    row.expected += inv.totalAmount;
-    months.set(inv.month, row);
-  }
-  for (const rcpt of receipts) {
-    if (!rcpt.month) continue;
-    const row = months.get(rcpt.month) ?? { collection: 0, expected: 0 };
-    row.collection += rcpt.totalPaid || rcpt.amount;
-    months.set(rcpt.month, row);
-  }
+type ChartPoint = { month: string; collection: number; expense: number };
 
-  return [...months.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-6)
-    .map(([month, row]) => ({
-      month: month.slice(5),
-      collection: Math.round(row.collection),
-      // Outstanding billed (expected − collected) until a live expenses API exists.
-      expense: Math.round(Math.max(0, row.expected - row.collection)),
-    }));
-}
-
+/**
+ * Methods: #6 #7 #16 #22 #24 #29
+ * Hero + chart from summary DTOs — not client reduce of invoice/receipt caches.
+ * Expected: first paint 1–2 RTTs; payload O(months) not O(invoices).
+ */
 export default function DashboardPage() {
   const { society, members } = useAuth();
   const today = format(new Date(), "EEEE, d MMMM yyyy");
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [chartData, setChartData] = useState<ChartPoint[]>([]);
+  const [, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!society) return;
+    let cancelled = false;
+    void Promise.all([
+      dashboardApi.summary().catch(() => null),
+      reportsApi.monthlySeries(society.id, 6).catch(() => null),
+    ]).then(([dash, series]) => {
+      if (cancelled) return;
+      startTransition(() => {
+        if (dash) {
+          setSummary({
+            outstandingTotal: Number(dash.outstandingTotal) || 0,
+            pendingInvoices: Number(dash.pendingInvoices) || 0,
+          });
+        }
+        if (series?.series?.length) {
+          setChartData(
+            series.series.map((row) => ({
+              month: row.month.slice(5),
+              collection: Math.round(row.collection),
+              expense: Math.round(row.expense),
+            }))
+          );
+        }
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [society]);
 
   if (!society) return null;
 
   const billingMonth = format(new Date(), "yyyy-MM");
   const stats = invoiceService.stats(society.id, billingMonth);
-  const chartData = liveCollectionSeries(society.id);
+  const pending = summary?.outstandingTotal ?? stats.outstanding ?? society.pendingMaintenance;
+  const pendingCount = summary?.pendingInvoices ?? stats.pendingFlats;
 
   return (
     <PageTransition>
@@ -77,10 +94,10 @@ export default function DashboardPage() {
         flatsOccupied={society.occupiedFlats}
         flatsTotal={society.totalFlats}
         fund={society.societyFund}
-        pending={stats.outstanding || society.pendingMaintenance}
+        pending={pending}
         collected={stats.collected || society.collectedThisMonth}
         lateFee={society.lateFeeTotal}
-        pendingCount={stats.pendingFlats}
+        pendingCount={pendingCount}
         memberRecords={members.length}
       />
 

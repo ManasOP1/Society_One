@@ -9,8 +9,13 @@ import { InvoiceStatus, Role } from '../../common/types/roles';
 import { AuthUser } from '../../common/decorators/auth.decorators';
 import {
   buildPaginationMeta,
+  clampLimit,
+  createdAtIdKeysetWhere,
+  decodeKeysetCursor,
+  encodeKeysetCursor,
   parsePagination,
   resolveListTake,
+  wantsKeyset,
   wantsPagination,
   type PaginatedResult,
 } from '../../common/utils/pagination.util';
@@ -21,6 +26,7 @@ import { BHK_LABELS, resolveFlatMaintenanceAmount } from '../../common/types/bhk
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { PushNotificationService } from '../notifications/push-notification.service';
+import { ReportingService } from '../reporting/reporting.service';
 
 export type InvoiceLineItem = {
   description: string;
@@ -28,27 +34,69 @@ export type InvoiceLineItem = {
   isDeduction?: boolean;
 };
 
-const INVOICE_LIST_INCLUDE = {
+/** List projection — no lineItems / wide columns. Method #9 */
+const INVOICE_LIST_SELECT = {
+  id: true,
+  invoiceNo: true,
+  billingMonth: true,
+  year: true,
+  issueDate: true,
+  dueDate: true,
+  maintenanceSubtotal: true,
+  arrearsSubtotal: true,
+  lateFee: true,
+  previousOutstanding: true,
+  advance: true,
+  totalAmount: true,
+  paidAmount: true,
+  outstanding: true,
+  statusCode: true,
+  createdAt: true,
   member: { select: { id: true, ownerName: true, phone: true, email: true } },
-  flat: { include: { wing: true } },
-} satisfies Prisma.InvoiceInclude;
+  flat: {
+    select: {
+      flatNo: true,
+      areaSqft: true,
+      wing: { select: { code: true } },
+    },
+  },
+} satisfies Prisma.InvoiceSelect;
 
 const INVOICE_INCLUDE = {
-  ...INVOICE_LIST_INCLUDE,
+  member: { select: { id: true, ownerName: true, phone: true, email: true } },
+  flat: { include: { wing: true } },
   lines: { orderBy: { lineNo: 'asc' as const } },
 } satisfies Prisma.InvoiceInclude;
 
+type InvoiceListRow = Prisma.InvoiceGetPayload<{ select: typeof INVOICE_LIST_SELECT }>;
 type InvoiceWithRelations = Invoice & {
   member?: unknown;
   flat?: unknown;
-  lines?: { id: string; lineNo: number; code: string | null; description: string; amount: Prisma.Decimal; isDeduction: boolean }[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  society?: any;
+  lines?: {
+    id: string;
+    lineNo: number;
+    code: string | null;
+    description: string;
+    amount: Prisma.Decimal;
+    isDeduction: boolean;
+  }[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
 };
 
-function serializeInvoice(inv: InvoiceWithRelations) {
+/** Slim list DTO — method #9. Expected: payload ↓ vs spreading full Invoice + relations. */
+function serializeInvoiceList(inv: InvoiceListRow) {
   return {
-    ...inv,
+    id: inv.id,
+    invoiceNo: inv.invoiceNo,
     month: inv.billingMonth,
+    year: inv.year,
+    issueDate: inv.issueDate,
+    dueDate: inv.dueDate,
     status: inv.statusCode,
+    statusCode: inv.statusCode,
     maintenanceSubtotal: toNumber(inv.maintenanceSubtotal),
     arrearsSubtotal: toNumber(inv.arrearsSubtotal),
     lateFee: toNumber(inv.lateFee),
@@ -57,6 +105,45 @@ function serializeInvoice(inv: InvoiceWithRelations) {
     totalAmount: toNumber(inv.totalAmount),
     paidAmount: toNumber(inv.paidAmount),
     outstanding: toNumber(inv.outstanding),
+    createdAt: inv.createdAt,
+    member: inv.member,
+    ownerName: inv.member?.ownerName ?? '',
+    mobile: inv.member?.phone ?? '',
+    email: inv.member?.email ?? '',
+    wing: inv.flat?.wing?.code ?? '',
+    flatNo: inv.flat?.flatNo ?? '',
+    areaSqft: inv.flat?.areaSqft ?? 0,
+  };
+}
+
+function serializeInvoice(inv: InvoiceWithRelations) {
+  return {
+    id: inv.id,
+    invoiceNo: inv.invoiceNo,
+    societyId: inv.societyId,
+    memberId: inv.memberId,
+    flatId: inv.flatId,
+    month: inv.billingMonth,
+    billingMonth: inv.billingMonth,
+    year: inv.year,
+    issueDate: inv.issueDate,
+    dueDate: inv.dueDate,
+    status: inv.statusCode,
+    statusCode: inv.statusCode,
+    notes: inv.notes,
+    pdfUrl: inv.pdfUrl,
+    maintenanceSubtotal: toNumber(inv.maintenanceSubtotal),
+    arrearsSubtotal: toNumber(inv.arrearsSubtotal),
+    lateFee: toNumber(inv.lateFee),
+    previousOutstanding: toNumber(inv.previousOutstanding),
+    advance: toNumber(inv.advance),
+    totalAmount: toNumber(inv.totalAmount),
+    paidAmount: toNumber(inv.paidAmount),
+    outstanding: toNumber(inv.outstanding),
+    createdAt: inv.createdAt,
+    updatedAt: inv.updatedAt,
+    member: inv.member,
+    flat: inv.flat,
     lineItems: inv.lines?.map((l) => ({
       id: l.id,
       description: l.description,
@@ -103,12 +190,19 @@ export class BillingService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly push: PushNotificationService,
+    private readonly reporting: ReportingService,
   ) {}
 
   async list(
     societyId: string,
     user: AuthUser,
-    filters?: { status?: InvoiceStatus; month?: string; page?: number; limit?: number },
+    filters?: {
+      status?: InvoiceStatus;
+      month?: string;
+      page?: number;
+      limit?: number;
+      cursor?: string;
+    },
   ) {
     const where: Prisma.InvoiceWhereInput = { societyId, ...activeOnly };
     if (user.role === Role.RESIDENT) {
@@ -119,10 +213,43 @@ export class BillingService {
     if (filters?.month) where.billingMonth = filters.month;
 
     const orderBy: Prisma.InvoiceOrderByWithRelationInput[] = [
-      { year: 'desc' },
-      { billingMonth: 'desc' },
       { createdAt: 'desc' },
+      { id: 'desc' },
     ];
+
+    /** Keyset pagination — method #11. Expected: stable latency vs deep OFFSET. */
+    if (wantsKeyset(filters)) {
+      const cursor = decodeKeysetCursor(filters?.cursor);
+      const take = clampLimit(filters?.limit, 50);
+      const keysetWhere: Prisma.InvoiceWhereInput = {
+        AND: [where, cursor ? createdAtIdKeysetWhere(cursor) : {}],
+      };
+      const rows = await this.prisma.invoice.findMany({
+        where: keysetWhere,
+        orderBy,
+        take: take + 1,
+        select: INVOICE_LIST_SELECT,
+      });
+      const hasMore = rows.length > take;
+      const pageRows = hasMore ? rows.slice(0, take) : rows;
+      const data = pageRows.map(serializeInvoiceList);
+      const nextCursor =
+        hasMore && pageRows.length
+          ? encodeKeysetCursor(pageRows[pageRows.length - 1])
+          : null;
+      const result: PaginatedResult<(typeof data)[number]> = {
+        data,
+        meta: {
+          total: -1,
+          page: 1,
+          limit: take,
+          totalPages: -1,
+          hasMore,
+          nextCursor,
+        },
+      };
+      return result;
+    }
 
     if (wantsPagination(filters)) {
       const { skip, take, page, limit } = parsePagination(filters);
@@ -133,11 +260,12 @@ export class BillingService {
           orderBy,
           skip,
           take,
-          include: INVOICE_LIST_INCLUDE,
+          select: INVOICE_LIST_SELECT,
         }),
       ]);
-      const result: PaginatedResult<ReturnType<typeof serializeInvoice>> = {
-        data: rows.map(serializeInvoice),
+      const data = rows.map(serializeInvoiceList);
+      const result: PaginatedResult<(typeof data)[number]> = {
+        data,
         meta: buildPaginationMeta(total, page, limit),
       };
       return result;
@@ -146,16 +274,16 @@ export class BillingService {
     const roleScope = user.role === Role.RESIDENT ? 'resident' : 'admin';
     const { take } = resolveListTake(filters, roleScope);
     const cacheKey = `invoices:${societyId}:${user.memberId ?? 'admin'}:${filters?.month ?? 'all'}:${filters?.status ?? 'all'}:${take}`;
-    const cached = readCache.get<ReturnType<typeof serializeInvoice>[]>(cacheKey);
+    const cached = readCache.get<ReturnType<typeof serializeInvoiceList>[]>(cacheKey);
     if (cached) return cached;
 
     const rows = await this.prisma.invoice.findMany({
       where,
       orderBy,
       take,
-      include: INVOICE_LIST_INCLUDE,
+      select: INVOICE_LIST_SELECT,
     });
-    const payload = rows.map(serializeInvoice);
+    const payload = rows.map(serializeInvoiceList);
     readCache.set(cacheKey, payload, 45_000);
     return payload;
   }
@@ -251,8 +379,6 @@ export class BillingService {
     });
     let seq = last.length > 0 ? Number(last[0].invoiceNo.slice(prefix.length)) || 0 : 0;
 
-    const created: string[] = [];
-
     const outstandingRows = await this.prisma.invoice.groupBy({
       by: ['memberId'],
       where: {
@@ -266,6 +392,18 @@ export class BillingService {
       outstandingRows.map((row) => [row.memberId, toNumber(row._sum.outstanding)]),
     );
 
+    type Built = {
+      memberId: string;
+      flatId: string | undefined;
+      invoiceNo: string;
+      maintenanceSubtotal: number;
+      arrearsSubtotal: number;
+      previousOutstanding: number;
+      totalAmount: number;
+      lineItems: InvoiceLineItem[];
+    };
+
+    const built: Built[] = [];
     for (const member of members) {
       if (alreadyBilled.has(member.id)) continue;
 
@@ -277,7 +415,6 @@ export class BillingService {
         primaryFlat?.bhkType,
       );
       const maintenanceSubtotal = maintenanceItems.reduce((s, i) => s + i.amount, 0);
-
       const previousOutstanding = outstandingByMember.get(member.id) ?? 0;
       const arrearsItems: InvoiceLineItem[] =
         previousOutstanding > 0
@@ -286,44 +423,83 @@ export class BillingService {
       const arrearsSubtotal = arrearsItems.reduce((s, i) => s + i.amount, 0);
       const totalAmount = Math.max(0, maintenanceSubtotal + arrearsSubtotal);
       seq += 1;
-      const invoiceNo = `${prefix}${pad(seq)}`;
-      const lineItems = [...maintenanceItems, ...arrearsItems];
+      built.push({
+        memberId: member.id,
+        flatId: member.memberFlats[0]?.flatId,
+        invoiceNo: `${prefix}${pad(seq)}`,
+        maintenanceSubtotal,
+        arrearsSubtotal,
+        previousOutstanding,
+        totalAmount,
+        lineItems: [...maintenanceItems, ...arrearsItems],
+      });
+    }
 
-      const inv = await this.prisma.invoice.create({
-        data: {
-          tenantId,
-          societyId,
-          memberId: member.id,
-          flatId: member.memberFlats[0]?.flatId,
-          invoiceNo,
-          billingMonth: month,
-          year,
-          issueDate,
-          dueDate,
-          maintenanceSubtotal,
-          arrearsSubtotal,
-          lateFee: 0,
-          previousOutstanding,
-          advance: 0,
-          totalAmount,
-          paidAmount: 0,
-          outstanding: totalAmount,
-          statusCode: InvoiceStatus.PENDING,
-          notes: settings.gstNote,
-          lines: {
-            create: lineItems.map((item, idx) => ({
+    /**
+     * Methods: #4 #5 — chunked createMany invoices + lines (no N round-trips under RLS).
+     * Expected: latency ≈ O(chunks) vs O(members); write path separate from UI reads (#17).
+     */
+    const BATCH = 50;
+    let generated = 0;
+    for (let i = 0; i < built.length; i += BATCH) {
+      const chunk = built.slice(i, i + BATCH);
+      await this.prisma.$transaction(async (tx) => {
+        await tx.invoice.createMany({
+          data: chunk.map((row) => ({
+            tenantId,
+            societyId,
+            memberId: row.memberId,
+            flatId: row.flatId,
+            invoiceNo: row.invoiceNo,
+            billingMonth: month,
+            year,
+            issueDate,
+            dueDate,
+            maintenanceSubtotal: row.maintenanceSubtotal,
+            arrearsSubtotal: row.arrearsSubtotal,
+            lateFee: 0,
+            previousOutstanding: row.previousOutstanding,
+            advance: 0,
+            totalAmount: row.totalAmount,
+            paidAmount: 0,
+            outstanding: row.totalAmount,
+            statusCode: InvoiceStatus.PENDING,
+            notes: settings.gstNote,
+          })),
+          skipDuplicates: true,
+        });
+
+        const createdRows = await tx.invoice.findMany({
+          where: {
+            societyId,
+            billingMonth: month,
+            invoiceNo: { in: chunk.map((c) => c.invoiceNo) },
+          },
+          select: { id: true, invoiceNo: true },
+        });
+        const idByNo = new Map(createdRows.map((r) => [r.invoiceNo, r.id]));
+
+        const lineRows: Prisma.InvoiceLineCreateManyInput[] = [];
+        for (const row of chunk) {
+          const invoiceId = idByNo.get(row.invoiceNo);
+          if (!invoiceId) continue;
+          row.lineItems.forEach((item, idx) => {
+            lineRows.push({
               tenantId,
               societyId,
+              invoiceId,
               lineNo: idx + 1,
               description: item.description,
               amount: item.amount,
               isDeduction: item.isDeduction ?? false,
-            })),
-          },
-        },
-        select: { id: true },
+            });
+          });
+        }
+        if (lineRows.length) {
+          await tx.invoiceLine.createMany({ data: lineRows });
+        }
+        generated += createdRows.length;
       });
-      created.push(inv.id);
     }
 
     await this.audit.log({
@@ -332,14 +508,15 @@ export class BillingService {
       action: 'INVOICES_GENERATED',
       entityType: 'Invoice',
       entityId: societyId,
-      details: `Generated ${created.length} invoices for ${month}`,
-      metadata: { count: created.length, month },
+      details: `Generated ${generated} invoices for ${month}`,
+      metadata: { count: generated, month },
     });
 
     readCache.deletePrefix(`invoices:${societyId}:`);
     readCache.deletePrefix(`dashboard:${societyId}:`);
+    this.reporting.scheduleRefresh(societyId);
 
-    if (created.length > 0) {
+    if (generated > 0) {
       const label = formatBillingMonth(month);
       void this.push
         .notifySocietyResidents(societyId, {
@@ -352,7 +529,7 @@ export class BillingService {
 
     return {
       month,
-      generated: created.length,
+      generated,
       skipped: alreadyBilled.size,
       invoices: [],
     };
@@ -384,6 +561,10 @@ export class BillingService {
       entityId: inv.id,
       details: invoiceNo,
     });
+
+    readCache.deletePrefix(`invoices:${societyId}:`);
+    readCache.deletePrefix(`dashboard:${societyId}:`);
+    this.reporting.scheduleRefresh(societyId);
 
     return { success: true };
   }

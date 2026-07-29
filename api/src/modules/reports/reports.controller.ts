@@ -38,4 +38,17 @@ export class ReportsController {
   ) {
     return this.reports.outstandingSummary(resolveSocietyId(user, societyId));
   }
+
+  @Get('monthly-series')
+  @Roles(Role.SUPER_ADMIN, Role.SOCIETY_ADMIN)
+  monthlySeries(
+    @CurrentUser() user: AuthUser,
+    @Query('societyId') societyId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.reports.monthlySeries(
+      resolveSocietyId(user, societyId),
+      limit ? Number(limit) : 6,
+    );
+  }
 }

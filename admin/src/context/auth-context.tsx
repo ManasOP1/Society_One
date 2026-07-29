@@ -456,10 +456,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         photo: initials(row.owner),
       }));
       setMembersState((prev) => [...prev, ...optimistic]);
-      void Promise.all(
-        rows.map((row) => membersApi.create(toApiMemberInput(row), society.id))
-      )
-        .then(() => {
+      /** Methods: #1 #5 — single bulk RPC instead of N POSTs */
+      void membersApi
+        .bulkImport(
+          rows.map((row) => toApiMemberInput(row)),
+          society.id
+        )
+        .then((result) => {
+          if (result.failed > 0) {
+            console.warn(
+              `Member import: ${result.created} created, ${result.failed} failed`,
+              result.errors
+            );
+          }
           notifyDataUpdated("members");
           return loadMembers(society.id);
         })

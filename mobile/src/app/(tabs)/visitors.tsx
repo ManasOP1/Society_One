@@ -49,7 +49,7 @@ export default function VisitorsScreen() {
     <Screen topInset tabbed>
       <AppText variant="title">Visitors</AppText>
       <AppText variant="body" color="textSecondary" style={{ marginTop: -Spacing.one }}>
-        Today's entries at your society gate
+        Entries for your flat only · admins see the full society log
       </AppText>
 
       <Segmented options={FILTERS} value={filter} onChange={setFilter} />
@@ -81,30 +81,40 @@ function VisitorRow({ visitor }: { visitor: SocietyVisitor }) {
   return (
     <Card style={{ gap: Spacing.onehalf }}>
       <View style={styles.row}>
-        <View style={[styles.photoBox, { backgroundColor: theme.cardMuted }]}>
-          <Feather name={iconFor(category)} size={22} color={theme.text} />
+        <View style={[styles.photoBox, { backgroundColor: theme.cardMuted, overflow: 'hidden' }]}>
+          {visitor.photoUrl ? (
+            <Feather name="camera" size={22} color={theme.text} />
+          ) : (
+            <Feather name={iconFor(category)} size={22} color={theme.text} />
+          )}
         </View>
         <View style={{ flex: 1, gap: 2 }}>
           <AppText variant="bodySemi" numberOfLines={1}>
             {visitor.name}
           </AppText>
           <AppText variant="caption" color="textSecondary" numberOfLines={1}>
-            {visitor.purpose} · Flat {visitor.flat}
+            {(visitor.visitType || visitor.purpose) +
+              (visitor.companyName ? ` · ${visitor.companyName}` : '') +
+              ` · Flat ${visitor.flat}`}
           </AppText>
         </View>
-        <OutlineBadge label="Logged" color={theme.success} />
+        <OutlineBadge label={visitor.status || 'Inside'} color={theme.success} />
       </View>
       <View style={styles.footer}>
         <View style={[styles.categoryChip, { backgroundColor: theme.cardMuted }]}>
           <AppText variant="caption" color="textSecondary">
-            {category}
+            {visitor.passNumber || category}
           </AppText>
         </View>
         <View style={styles.timeRow}>
           <Feather name="clock" size={13} color={theme.textSecondary} />
           <AppText variant="caption" color="textSecondary" numberOfLines={1}>
             {visitor.expectedTime}
-            {visitor.vehicle && visitor.vehicle !== '—' ? ` · ${visitor.vehicle}` : ''}
+            {visitor.vehicleNo
+              ? ` · ${visitor.vehicleType || ''} ${visitor.vehicleNo}`
+              : visitor.vehicle && visitor.vehicle !== '—'
+                ? ` · ${visitor.vehicle}`
+                : ''}
           </AppText>
         </View>
       </View>

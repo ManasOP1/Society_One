@@ -25,11 +25,13 @@ export class ReceiptsController {
     @Query('month') month?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
   ) {
     return this.receipts.list(resolveSocietyId(user, societyId), user, {
       month,
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
+      cursor,
     });
   }
 

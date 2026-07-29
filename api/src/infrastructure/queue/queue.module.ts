@@ -7,6 +7,7 @@ import {
   QUEUE_NOTIFICATIONS,
   QUEUE_PDF,
   QUEUE_REMINDERS,
+  QUEUE_REPORTING,
 } from './queue.constants';
 import { PdfProcessor } from './pdf.processor';
 import { NotificationProcessor } from './notification.processor';
@@ -45,6 +46,7 @@ function redisConnection(config: ConfigService): ConnectionOptions {
       { name: QUEUE_NOTIFICATIONS },
       { name: QUEUE_PDF },
       { name: QUEUE_REMINDERS },
+      { name: QUEUE_REPORTING },
     ),
   ],
   providers: [PdfProcessor, NotificationProcessor, BillingProcessor, RemindersProcessor],

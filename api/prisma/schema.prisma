@@ -122,6 +122,9 @@ model Society {
   totalFlats      Int       @default(0) @map("total_flats")
   occupiedFlats   Int       @default(0) @map("occupied_flats")
   statusCode      String    @default("ACTIVE") @map("status_code") @db.VarChar(32)
+  /** Public gate check-in QR token — one per society. Scan opens /gate/{token} */
+  gateQrToken     String?   @unique @map("gate_qr_token") @db.VarChar(64)
+  gateQrGeneratedAt DateTime? @map("gate_qr_generated_at") @db.Timestamptz(6)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
@@ -300,6 +303,7 @@ model Flat {
   wing    Wing    @relation(fields: [wingId], references: [id], onDelete: Restrict)
   memberFlats MemberFlat[]
   invoices Invoice[]
+  visitors Visitor[]
   visitorPasses VisitorPass[]
   staffProfiles StaffProfile[]
   amenityBookings AmenityBooking[]
@@ -343,6 +347,7 @@ model Member {
   @@index([tenantId, societyId])
   @@index([societyId, email])
   @@index([societyId, isActive])
+  @@index([societyId, ownerName])
   @@map("members")
 }
 
@@ -494,6 +499,7 @@ model Invoice {
   @@unique([societyId, memberId, billingMonth])
   @@index([tenantId, societyId, statusCode])
   @@index([societyId, billingMonth])
+  @@index([societyId, billingMonth, createdAt])
   @@index([societyId, memberId])
   @@index([dueDate, statusCode])
   @@map("invoices")
@@ -632,6 +638,7 @@ model Receipt {
   @@unique([societyId, receiptNo])
   @@index([tenantId, societyId, billingMonth])
   @@index([societyId, memberId])
+  @@index([societyId, createdAt])
   @@map("receipts")
 }
 
@@ -656,6 +663,7 @@ model Notice {
   society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
 
   @@index([tenantId, societyId, publishedAt])
+  @@index([societyId, pinned, publishedAt])
   @@map("notices")
 }
 
@@ -691,6 +699,7 @@ model Visitor {
   societyId    String    @map("society_id") @db.Uuid
   memberId     String?   @map("member_id") @db.Uuid
   passId       String?   @map("pass_id") @db.Uuid
+  flatId       String?   @map("flat_id") @db.Uuid
   /** GUEST | DELIVERY | STAFF | CAB | OTHER */
   categoryCode String    @default("GUEST") @map("category_code") @db.VarChar(32)
   name         String
@@ -699,6 +708,19 @@ model Visitor {
   vehicle      String?
   phone        String?
   expectedTime String?   @map("expected_time")
+  /** Gate check-in photo (Supabase public URL) */
+  photoUrl     String?   @map("photo_url")
+  visitType    String?   @map("visit_type") @db.VarChar(64)
+  companyName  String?   @map("company_name")
+  wingCode     String?   @map("wing_code") @db.VarChar(16)
+  flatNo       String?   @map("flat_no") @db.VarChar(32)
+  vehicleType  String?   @map("vehicle_type") @db.VarChar(32)
+  vehicleNo    String?   @map("vehicle_no") @db.VarChar(32)
+  /** Human pass number e.g. VP-20260729-0001 */
+  passNumber   String?   @map("pass_number") @db.VarChar(32)
+  checkInAt    DateTime? @map("check_in_at") @db.Timestamptz(6)
+  createdByName String?  @map("created_by_name")
+  deviceId     String?   @map("device_id") @db.VarChar(128)
   entryAt      DateTime? @map("entry_at") @db.Timestamptz(6)
   exitAt       DateTime? @map("exit_at") @db.Timestamptz(6)
   statusCode   String    @default("LOGGED") @map("status_code") @db.VarChar(32)
@@ -713,10 +735,14 @@ model Visitor {
   society Society @relation(fields: [societyId], references: [id], onDelete: Restrict)
   member  Member? @relation(fields: [memberId], references: [id], onDelete: SetNull)
   pass    VisitorPass? @relation(fields: [passId], references: [id], onDelete: SetNull)
+  flat    Flat? @relation(fields: [flatId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, societyId, createdAt])
   @@index([societyId, memberId])
   @@index([societyId, statusCode, entryAt])
+  @@index([societyId, flatId, createdAt(sort: Desc)])
+  @@index([societyId, wingCode, flatNo])
+  @@unique([societyId, passNumber])
   @@map("visitors")
 }
 
@@ -913,6 +939,32 @@ model RptSocietyMonthly {
   @@unique([societyId, billingMonth])
   @@index([tenantId, societyId, billingMonth])
   @@map("rpt_society_monthly")
+}
+
+/** Staging rows for bulk member import — never queried by UI. Method #1 */
+model StgMemberImport {
+  id                 String    @id @default(uuid()) @db.Uuid
+  jobId              String    @map("job_id") @db.Uuid
+  societyId          String    @map("society_id") @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  rowNo              Int       @map("row_no")
+  ownerName          String    @map("owner_name")
+  email              String    @db.Citext
+  phone              String?
+  password           String
+  wing               String
+  flatNo             String    @map("flat_no")
+  areaSqft           Decimal?  @map("area_sqft") @db.Decimal(10, 2)
+  bhkType            String?   @map("bhk_type") @db.VarChar(16)
+  parking            String?
+  maintenanceAmount  Decimal?  @map("maintenance_amount") @db.Decimal(14, 2)
+  error              String?
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  processedAt        DateTime? @map("processed_at") @db.Timestamptz(6)
+
+  @@index([jobId, rowNo])
+  @@index([societyId, jobId])
+  @@map("stg_member_import")
 }
 
 // ═══════════════════════════════════════════════════════════════════

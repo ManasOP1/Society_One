@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
-import { VisitorsController } from './visitors.controller';
+import { SupabaseModule } from '../../infrastructure/supabase/supabase.module';
+import { PublicGateController, VisitorsController } from './visitors.controller';
 import { VisitorsService } from './visitors.service';
 
 @Module({
-  controllers: [VisitorsController],
+  imports: [SupabaseModule],
+  controllers: [VisitorsController, PublicGateController],
   providers: [VisitorsService],
   exports: [VisitorsService],
 })

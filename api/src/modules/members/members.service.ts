@@ -15,14 +15,21 @@ import { AuditService } from '../audit/audit.service';
 import { BhkType, isBhkType } from '../../common/types/bhk';
 import {
   buildPaginationMeta,
+  clampLimit,
+  decodeOwnerKeysetCursor,
+  encodeOwnerKeysetCursor,
+  ownerNameIdKeysetWhere,
   parsePagination,
   resolveListTake,
+  wantsKeyset,
   wantsPagination,
   type PaginatedResult,
 } from '../../common/utils/pagination.util';
 import { activeOnly } from '../../common/utils/prisma-active.util';
 import { toNumber } from '../../common/utils/decimal.util';
 import { readCache } from '../../common/utils/ttl-cache';
+import { randomUUID } from 'crypto';
+import { ReportingService } from '../reporting/reporting.service';
 
 export type CreateMemberInput = {
   ownerName: string;
@@ -105,6 +112,7 @@ export class MembersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly reporting: ReportingService,
     config: ConfigService,
   ) {
     this.bcryptRounds = config.get<number>('BCRYPT_ROUNDS') ?? 10;
@@ -113,12 +121,45 @@ export class MembersService {
   async list(
     societyId: string,
     user: AuthUser,
-    opts?: { page?: number; limit?: number },
+    opts?: { page?: number; limit?: number; cursor?: string },
   ) {
     if (user.role === Role.RESIDENT) {
       throw new ForbiddenException('Residents cannot list all members');
     }
-    const where = { societyId, ...activeOnly };
+    const where: Prisma.MemberWhereInput = { societyId, ...activeOnly };
+    const orderBy: Prisma.MemberOrderByWithRelationInput[] = [
+      { ownerName: 'asc' },
+      { id: 'asc' },
+    ];
+
+    if (wantsKeyset(opts)) {
+      const cursor = decodeOwnerKeysetCursor(opts?.cursor);
+      const take = clampLimit(opts?.limit, 50);
+      const keysetWhere: Prisma.MemberWhereInput = {
+        AND: [where, cursor ? ownerNameIdKeysetWhere(cursor) : {}],
+      };
+      const rows = await this.prisma.member.findMany({
+        where: keysetWhere,
+        orderBy,
+        take: take + 1,
+        include: MEMBER_INCLUDE,
+      });
+      const hasMore = rows.length > take;
+      const pageRows = hasMore ? rows.slice(0, take) : rows;
+      const data = pageRows.map(serializeMember);
+      const last = pageRows[pageRows.length - 1];
+      return {
+        data,
+        meta: {
+          total: -1,
+          page: 1,
+          limit: take,
+          totalPages: -1,
+          hasMore,
+          nextCursor: hasMore && last ? encodeOwnerKeysetCursor(last) : null,
+        },
+      } satisfies PaginatedResult<(typeof data)[number]>;
+    }
 
     if (wantsPagination(opts)) {
       const { skip, take, page, limit } = parsePagination(opts);
@@ -126,7 +167,7 @@ export class MembersService {
         this.prisma.member.count({ where }),
         this.prisma.member.findMany({
           where,
-          orderBy: { ownerName: 'asc' },
+          orderBy,
           skip,
           take,
           include: MEMBER_INCLUDE,
@@ -145,7 +186,7 @@ export class MembersService {
 
     const rows = await this.prisma.member.findMany({
       where,
-      orderBy: { ownerName: 'asc' },
+      orderBy,
       take: resolveListTake(opts, 'admin').take,
       include: MEMBER_INCLUDE,
     });
@@ -232,7 +273,119 @@ export class MembersService {
       details: `${member.ownerName} ${input.wing}-${input.flatNo} (app login provisioned)`,
     }).catch(() => undefined);
     readCache.delete(`members:${societyId}`);
+    this.reporting.scheduleRefresh(societyId);
     return serializeMember(member);
+  }
+
+  /**
+   * Methods: #1 #4 #5 #17 #30
+   * Stage rows in stg_member_import, then process in batches (no N HTTP POSTs).
+   * Expected: 1 RTT from admin; DB writes in chunks of 25; UI stays on members list cache.
+   */
+  async bulkImport(societyId: string, rows: CreateMemberInput[], actor: AuthUser) {
+    if (!rows.length) {
+      return { jobId: null, created: 0, failed: 0, errors: [] as { row: number; error: string }[] };
+    }
+    if (rows.length > 500) {
+      throw new BadRequestException('Import limited to 500 rows per request');
+    }
+
+    const tenantId =
+      actor.tenantId ?? (await this.prisma.getSocietyTenantId(societyId));
+    const jobId = randomUUID();
+
+    await this.prisma.stgMemberImport.createMany({
+      data: rows.map((row, idx) => ({
+        jobId,
+        societyId,
+        tenantId,
+        rowNo: idx + 1,
+        ownerName: row.ownerName,
+        email: row.email.trim().toLowerCase(),
+        phone: row.phone ?? null,
+        password: row.password,
+        wing: row.wing,
+        flatNo: row.flatNo,
+        areaSqft: row.areaSqft ?? null,
+        bhkType: row.bhkType ?? null,
+        parking: row.parking ?? null,
+        maintenanceAmount: row.maintenanceAmount ?? null,
+      })),
+    });
+
+    const staged = await this.prisma.stgMemberImport.findMany({
+      where: { jobId, societyId },
+      orderBy: { rowNo: 'asc' },
+    });
+
+    const errors: { row: number; error: string }[] = [];
+    let created = 0;
+    const BATCH = 25;
+
+    for (let i = 0; i < staged.length; i += BATCH) {
+      const chunk = staged.slice(i, i + BATCH);
+      for (const row of chunk) {
+        try {
+          if (!row.password || row.password.length < 6) {
+            throw new BadRequestException('Password must be at least 6 characters');
+          }
+          await this.create(
+            societyId,
+            {
+              ownerName: row.ownerName,
+              email: row.email,
+              phone: row.phone ?? undefined,
+              password: row.password,
+              wing: row.wing,
+              flatNo: row.flatNo,
+              areaSqft: row.areaSqft != null ? toNumber(row.areaSqft) : undefined,
+              bhkType: row.bhkType && isBhkType(row.bhkType) ? row.bhkType : undefined,
+              parking: row.parking ?? undefined,
+              maintenanceAmount:
+                row.maintenanceAmount != null ? toNumber(row.maintenanceAmount) : undefined,
+            },
+            actor,
+          );
+          created += 1;
+          await this.prisma.stgMemberImport.update({
+            where: { id: row.id },
+            data: { processedAt: new Date(), error: null },
+          });
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
+          errors.push({ row: row.rowNo, error: message });
+          await this.prisma.stgMemberImport.update({
+            where: { id: row.id },
+            data: { processedAt: new Date(), error: message.slice(0, 500) },
+          });
+        }
+      }
+    }
+
+    await this.audit.log({
+      societyId,
+      actorId: actor.id,
+      action: 'MEMBERS_BULK_IMPORTED',
+      entityType: 'Member',
+      entityId: societyId,
+      details: `Imported ${created}/${rows.length} members (job ${jobId})`,
+      metadata: { jobId, created, failed: errors.length },
+    });
+
+    readCache.delete(`members:${societyId}`);
+    this.reporting.scheduleRefresh(societyId);
+
+    // Drop processed staging rows for this job (keep failed briefly for debug)
+    await this.prisma.stgMemberImport.deleteMany({
+      where: { jobId, error: null },
+    });
+
+    return {
+      jobId,
+      created,
+      failed: errors.length,
+      errors: errors.slice(0, 50),
+    };
   }
 
   async update(
@@ -345,6 +498,7 @@ export class MembersService {
       details: `Updated ${input.ownerName ?? existing.ownerName}`,
     });
     readCache.delete(`members:${societyId}`);
+    this.reporting.scheduleRefresh(societyId);
     return this.getById(societyId, id, actor);
   }
 
@@ -368,6 +522,7 @@ export class MembersService {
       entityId: id,
     });
     readCache.delete(`members:${societyId}`);
+    this.reporting.scheduleRefresh(societyId);
     return { success: true };
   }
 

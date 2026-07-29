@@ -1,10 +1,10 @@
 import { Feather } from '@expo/vector-icons';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { apiErrorMessage } from '@/api/client';
-import type { Invoice, Receipt } from '@/api/types';
+import type { Invoice, InvoiceStatus, Receipt } from '@/api/types';
 import {
   MonthFilter,
   PaymentsFilterCard,
@@ -20,10 +20,20 @@ import { ListSkeleton } from '@/components/ui/skeleton';
 import { EmptyState, ErrorState } from '@/components/ui/states';
 import { Brand, Radius, Spacing, softShadow } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
-import { useInvoices, useReceipts } from '@/hooks/queries';
+import { useDashboard, useInvoices, useReceipts } from '@/hooks/queries';
 import { isInitialLoad } from '@/hooks/query-ui';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDate, formatINR, formatMonthShort } from '@/utils/format';
+
+/** #20 — debounce search before filtering the fetched page. */
+function useDebouncedValue<T>(value: T, ms = 300): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(id);
+  }, [value, ms]);
+  return debounced;
+}
 
 const TABS = ['Invoices', 'Receipts'] as const;
 
@@ -78,20 +88,38 @@ function yearsFrom(months: string[]): string[] {
   return [...new Set(months.map((value) => value.slice(0, 4)).filter(Boolean))].sort().reverse();
 }
 
-function TotalPendingCard({ invoices, isAdmin }: { invoices: Invoice[]; isAdmin: boolean }) {
+function TotalPendingCard({
+  invoices,
+  outstandingTotal,
+  nextDueDate,
+  nextDueInvoiceNo,
+  isAdmin,
+}: {
+  invoices: Invoice[];
+  outstandingTotal?: number;
+  nextDueDate?: string | null;
+  nextDueInvoiceNo?: string | null;
+  isAdmin: boolean;
+}) {
   const theme = useTheme();
   const router = useRouter();
 
   const pending = invoices.filter((i) => i.outstanding > 0 && i.status !== 'Cancelled');
-  const total = pending.reduce((sum, i) => sum + i.outstanding, 0);
+  const total =
+    outstandingTotal != null && outstandingTotal > 0
+      ? outstandingTotal
+      : pending.reduce((sum, i) => sum + i.outstanding, 0);
   if (total <= 0) return null;
 
   const maintenance = Math.min(
     total,
-    pending.reduce((sum, i) => sum + i.maintenanceSubtotal, 0)
+    pending.reduce((sum, i) => sum + i.maintenanceSubtotal, 0) || total
   );
-  const arrears = total - maintenance;
+  const arrears = Math.max(0, total - maintenance);
   const nextDue = [...pending].sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
+  const payInvoiceNo = nextDue?.invoiceNo || nextDueInvoiceNo || '';
+  const payAmount = nextDue?.outstanding ?? total;
+  const dueLabel = nextDue?.dueDate ?? nextDueDate;
 
   return (
     <Card dark style={[heroStyles.card, softShadow]}>
@@ -120,12 +148,26 @@ function TotalPendingCard({ invoices, isAdmin }: { invoices: Invoice[]; isAdmin:
             </AppText>
           </View>
         ) : null}
+        {dueLabel ? (
+          <View style={heroStyles.row}>
+            <AppText variant="body" style={{ color: theme.textSecondaryOnDark }}>
+              Next due
+            </AppText>
+            <AppText variant="bodySemi" style={{ color: theme.textOnDark }}>
+              {formatDate(dueLabel)}
+            </AppText>
+          </View>
+        ) : null}
       </View>
-      <Button
-        title={`${isAdmin ? 'Record' : 'Pay'} ${formatINR(nextDue.outstanding)}`}
-        variant="secondary"
-        onPress={() => router.push({ pathname: '/pay/[invoiceNo]', params: { invoiceNo: nextDue.invoiceNo } })}
-      />
+      {payInvoiceNo ? (
+        <Button
+          title={`${isAdmin ? 'Record' : 'Pay'} ${formatINR(payAmount)}`}
+          variant="secondary"
+          onPress={() =>
+            router.push({ pathname: '/pay/[invoiceNo]', params: { invoiceNo: payInvoiceNo } })
+          }
+        />
+      ) : null}
     </Card>
   );
 }
@@ -145,6 +187,9 @@ function InvoicesTab({ tab, setTab, initialQuery }: TabProps) {
   const [year, setYear] = useState('All');
   const [month, setMonth] = useState<MonthFilter>('All');
   const [query, setQuery] = useState(initialQuery ?? '');
+  const debouncedQuery = useDebouncedValue(query, 300);
+  const deferredQuery = useDeferredValue(debouncedQuery);
+  const dashboard = useDashboard();
 
   const [lastParamQuery, setLastParamQuery] = useState(initialQuery);
   if (initialQuery !== lastParamQuery) {
@@ -152,32 +197,35 @@ function InvoicesTab({ tab, setTab, initialQuery }: TabProps) {
     if (initialQuery !== undefined) setQuery(initialQuery);
   }
 
-  const invoices = useInvoices({});
+  /**
+   * Methods: #11 #19 #23 — status + exact month on server; year-only / search on fetched page.
+   * Expected: payload ↓ when filtering Paid/Overdue; avoid full-society reduce on device.
+   */
+  const apiMonth = year !== 'All' && month !== 'All' ? `${year}-${month}` : undefined;
+  const invoices = useInvoices({
+    status: status === 'All' ? 'All' : (status as InvoiceStatus),
+    month: apiMonth,
+  });
   const years = useMemo(() => yearsFrom((invoices.data ?? []).map((i) => i.month)), [invoices.data]);
 
-  const periodInvoices = useMemo(
-    () =>
-      (invoices.data ?? []).filter(
-        (i) =>
-          (year === 'All' || String(i.year) === year) &&
-          (month === 'All' || i.month.slice(5, 7) === month)
-      ),
-    [invoices.data, year, month]
-  );
+  const periodInvoices = useMemo(() => {
+    const rows = invoices.data ?? [];
+    if (apiMonth || year === 'All') return rows;
+    return rows.filter((i) => String(i.year) === year);
+  }, [invoices.data, year, apiMonth]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
+    if (!q) return periodInvoices;
     return periodInvoices.filter(
       (i) =>
-        (status === 'All' || i.status === status) &&
-        (!q ||
-          i.invoiceNo.toLowerCase().includes(q) ||
-          i.ownerName.toLowerCase().includes(q) ||
-          `${i.wing}-${i.flatNo}`.toLowerCase().includes(q) ||
-          i.status.toLowerCase().includes(q) ||
-          String(i.totalAmount).includes(q))
+        i.invoiceNo.toLowerCase().includes(q) ||
+        i.ownerName.toLowerCase().includes(q) ||
+        `${i.wing}-${i.flatNo}`.toLowerCase().includes(q) ||
+        i.status.toLowerCase().includes(q) ||
+        String(i.totalAmount).includes(q)
     );
-  }, [periodInvoices, status, query]);
+  }, [periodInvoices, deferredQuery]);
 
   const activeFilters =
     (status !== 'All' ? 1 : 0) + (year !== 'All' ? 1 : 0) + (month !== 'All' ? 1 : 0) + (query.trim() ? 1 : 0);
@@ -192,7 +240,15 @@ function InvoicesTab({ tab, setTab, initialQuery }: TabProps) {
   const header = (
     <View style={styles.headerBlock}>
       <ScreenHeader tab={tab} setTab={setTab} isAdmin={isAdmin} />
-      {invoices.data ? <TotalPendingCard invoices={periodInvoices} isAdmin={isAdmin} /> : null}
+      {invoices.data || dashboard.data ? (
+        <TotalPendingCard
+          invoices={periodInvoices}
+          outstandingTotal={dashboard.data?.outstandingTotal}
+          nextDueDate={dashboard.data?.nextDueDate}
+          nextDueInvoiceNo={dashboard.data?.nextDueInvoiceNo}
+          isAdmin={isAdmin}
+        />
+      ) : null}
       <PaymentsFilterCard
         search={query}
         onSearchChange={setQuery}
@@ -310,6 +366,8 @@ function ReceiptsTab({ tab, setTab, initialQuery }: TabProps) {
   const [year, setYear] = useState('All');
   const [month, setMonth] = useState<MonthFilter>('All');
   const [query, setQuery] = useState(initialQuery ?? '');
+  const debouncedQuery = useDebouncedValue(query, 300);
+  const deferredQuery = useDeferredValue(debouncedQuery);
 
   const [lastParamQuery, setLastParamQuery] = useState(initialQuery);
   if (initialQuery !== lastParamQuery) {
@@ -319,7 +377,7 @@ function ReceiptsTab({ tab, setTab, initialQuery }: TabProps) {
 
   const years = useMemo(() => yearsFrom((receipts.data ?? []).map((r) => r.month)), [receipts.data]);
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     return (receipts.data ?? []).filter(
       (r) =>
         (year === 'All' || r.month.slice(0, 4) === year) &&
@@ -331,7 +389,7 @@ function ReceiptsTab({ tab, setTab, initialQuery }: TabProps) {
           r.paymentMode.toLowerCase().includes(q) ||
           String(r.totalPaid).includes(q))
     );
-  }, [receipts.data, year, month, query]);
+  }, [receipts.data, year, month, deferredQuery]);
 
   const activeFilters = (year !== 'All' ? 1 : 0) + (month !== 'All' ? 1 : 0) + (query.trim() ? 1 : 0);
   const clearFilters = () => {

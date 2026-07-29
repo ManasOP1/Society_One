@@ -144,10 +144,17 @@ export interface SocietyVisitor {
   name: string;
   flat: string;
   purpose: string;
+  visitType?: string;
+  companyName?: string;
   vehicle: string;
+  vehicleType?: string;
+  vehicleNo?: string;
   expectedTime: string;
+  checkInAt?: string | null;
   phone: string;
-  status: 'Logged';
+  photoUrl?: string | null;
+  passNumber?: string | null;
+  status: string;
   createdAt: string;
 }
 

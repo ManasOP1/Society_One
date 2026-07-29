@@ -17,6 +17,7 @@ import {
   type PdfJob,
 } from '../../infrastructure/queue/queue.constants';
 import { readCache } from '../../common/utils/ttl-cache';
+import { ReportingService } from '../reporting/reporting.service';
 
 @Injectable()
 export class PaymentsService {
@@ -25,6 +26,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly razorpay: RazorpayService,
+    private readonly reporting: ReportingService,
     @InjectQueue(QUEUE_PDF) private readonly pdfQueue: Queue<PdfJob>,
     @InjectQueue(QUEUE_NOTIFICATIONS)
     private readonly notificationQueue: Queue<NotificationJob>,
@@ -463,6 +465,7 @@ export class PaymentsService {
     readCache.deletePrefix(`dashboard:${updatedPayment.societyId}:`);
     readCache.deletePrefix(`invoices:${updatedPayment.societyId}:`);
     readCache.deletePrefix(`receipts:${updatedPayment.societyId}:`);
+    this.reporting.scheduleRefresh(updatedPayment.societyId);
     return { duplicate: false, paymentId: updatedPayment.id, receiptId: receipt?.id };
   }
 }

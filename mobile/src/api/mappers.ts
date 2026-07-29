@@ -292,16 +292,28 @@ export function mapEvent(row: Record<string, unknown>): SocietyEvent {
 }
 
 export function mapVisitor(row: Record<string, unknown>): SocietyVisitor {
+  const statusRaw = str(row.status ?? row.statusCode ?? 'LOGGED');
+  const status =
+    statusRaw === 'INSIDE'
+      ? 'Inside'
+      : statusRaw.charAt(0) + statusRaw.slice(1).toLowerCase().replace(/_/g, ' ');
   return {
     id: str(row.id),
     societyId: str(row.societyId),
     name: str(row.name),
     flat: str(row.flat ?? row.flatLabel),
     purpose: str(row.purpose),
+    visitType: row.visitType ? str(row.visitType) : undefined,
+    companyName: row.companyName ? str(row.companyName) : undefined,
     vehicle: str(row.vehicle),
+    vehicleType: row.vehicleType ? str(row.vehicleType) : undefined,
+    vehicleNo: row.vehicleNo ? str(row.vehicleNo) : undefined,
     expectedTime: str(row.expectedTime),
+    checkInAt: row.checkInAt ? str(row.checkInAt) : null,
     phone: str(row.phone),
-    status: 'Logged',
+    photoUrl: row.photoUrl ? str(row.photoUrl) : null,
+    passNumber: row.passNumber ? str(row.passNumber) : null,
+    status,
     createdAt: str(row.createdAt),
   };
 }

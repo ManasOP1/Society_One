@@ -280,6 +280,23 @@ export const membersApi = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   create: (input: Record<string, unknown>, societyId?: string) =>
     apiFetch<any>(`/members${qs({ societyId })}`, { method: "POST", body: JSON.stringify(input) }),
+  /**
+   * Methods: #1 #5 — one bulk request via staging table instead of N POSTs.
+   * Expected: round-trips ↓ from N to 1; payload one JSON array.
+   */
+  bulkImport: (
+    rows: Record<string, unknown>[],
+    societyId?: string
+  ) =>
+    apiFetch<{
+      jobId: string | null;
+      created: number;
+      failed: number;
+      errors: { row: number; error: string }[];
+    }>(`/members/bulk${qs({ societyId })}`, {
+      method: "POST",
+      body: JSON.stringify({ rows }),
+    }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   update: (id: string, input: Record<string, unknown>, societyId?: string) =>
     apiFetch<any>(`/members/${id}${qs({ societyId })}`, { method: "PATCH", body: JSON.stringify(input) }),
@@ -346,8 +363,39 @@ export const paymentsApi = {
     apiFetch<any>("/payments/manual", { method: "POST", body: JSON.stringify(input) }),
 };
 
+export const dashboardApi = {
+  /** Server-side aggregates — prefer over client reduce of invoices/receipts. Methods #7 #16 #22 */
+  summary: () =>
+    apiFetch<{
+      outstandingTotal: number;
+      pendingInvoices: number;
+      nextDueDate: string | null;
+      nextDueInvoiceNo: string | null;
+      visitorsToday: number;
+      latestNotice: unknown | null;
+      upcomingEvent: unknown | null;
+      lastReceipt: unknown | null;
+    }>("/dashboard"),
+};
+
+export const reportsApi = {
+  /** Methods: #6 #16 #29 — one shaped series DTO from matview/rpt_* */
+  monthlySeries: (societyId?: string, limit = 6) =>
+    apiFetch<{
+      societyId: string;
+      source: string;
+      series: {
+        month: string;
+        billed: number;
+        collection: number;
+        outstanding: number;
+        expense: number;
+      }[];
+    }>(`/reports/monthly-series${qs({ societyId, limit: String(limit) })}`),
+};
+
 export const communityApi = {
-  notices: async () => asListRows(await apiFetch("/notices")),
+  notices: async () => asListRows(await apiFetch(`/notices${qs({ limit: "100" })}`)),
   createNotice: (input: Record<string, unknown>) =>
     apiFetch<any>("/notices", { method: "POST", body: JSON.stringify(input) }),
   updateNotice: (id: string, input: Record<string, unknown>) =>
@@ -357,7 +405,7 @@ export const communityApi = {
     }),
   deleteNotice: (id: string) =>
     apiFetch<{ success: boolean }>(`/notices/${encodeURIComponent(id)}`, { method: "DELETE" }),
-  events: async () => asListRows(await apiFetch("/events")),
+  events: async () => asListRows(await apiFetch(`/events${qs({ limit: "100" })}`)),
   createEvent: (input: Record<string, unknown>) =>
     apiFetch<any>("/events", { method: "POST", body: JSON.stringify(input) }),
   updateEvent: (id: string, input: Record<string, unknown>) =>
@@ -372,12 +420,67 @@ export const communityApi = {
 export const visitorsApi = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   list: async (societyId?: string) =>
-    asListRows(await apiFetch(`/visitors${qs({ societyId })}`)),
+    asListRows(await apiFetch(`/visitors${qs({ societyId, limit: "100" })}`)),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   create: (input: Record<string, unknown>, societyId?: string) =>
     apiFetch<any>(`/visitors${qs({ societyId })}`, { method: "POST", body: JSON.stringify(input) }),
   remove: (id: string, societyId?: string) =>
     apiFetch<{ success: boolean }>(`/visitors/${id}${qs({ societyId })}`, { method: "DELETE" }),
+  getGateQr: (societyId?: string) =>
+    apiFetch<{
+      societyId: string;
+      societyName: string;
+      address: string;
+      token: string;
+      gateUrl: string;
+      generatedAt: string | null;
+    }>(`/visitors/gate-qr${qs({ societyId })}`),
+  ensureGateQr: (societyId?: string) =>
+    apiFetch<{
+      societyId: string;
+      societyName: string;
+      address: string;
+      token: string;
+      gateUrl: string;
+      generatedAt: string | null;
+    }>(`/visitors/gate-qr${qs({ societyId })}`, { method: "POST" }),
+};
+
+/** Public society gate check-in (no auth). */
+export const gateApi = {
+  context: (token: string) =>
+    apiFetch<{
+      societyId: string;
+      societyName: string;
+      address: string;
+      wings: { id: string; code: string; name: string | null; label: string }[];
+    }>(`/public/gate/${encodeURIComponent(token)}`, { auth: false }),
+  flats: (token: string, wing: string) =>
+    apiFetch<{ id: string; flatNo: string; label: string }[]>(
+      `/public/gate/${encodeURIComponent(token)}/flats${qs({ wing })}`,
+      { auth: false }
+    ),
+  checkIn: (token: string, input: Record<string, unknown>) =>
+    apiFetch<{
+      id: string;
+      passNumber: string | null;
+      name: string;
+      flat: string;
+      phone: string | null;
+      photoUrl: string | null;
+      visitType: string | null;
+      companyName: string | null;
+      vehicleType: string | null;
+      vehicleNo: string | null;
+      checkInAt: string | null;
+      status: string;
+      societyName: string;
+      message: string;
+    }>(`/public/gate/${encodeURIComponent(token)}/check-in`, {
+      method: "POST",
+      auth: false,
+      body: JSON.stringify(input),
+    }),
 };
 
 /* ------------------------------------------------------------------ */

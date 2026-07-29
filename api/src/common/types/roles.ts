@@ -91,6 +91,8 @@ export const VisitorStatus = {
   APPROVED: 'APPROVED',
   REJECTED: 'REJECTED',
   CHECKED_OUT: 'CHECKED_OUT',
+  /** Gate check-in via QR — currently inside the society */
+  INSIDE: 'INSIDE',
 } as const;
 export type VisitorStatus = (typeof VisitorStatus)[keyof typeof VisitorStatus];
 

@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ReportingModule } from '../reporting/reporting.module';
 import { BillingController, PublicBillingController } from './billing.controller';
 import { BillingSchedulerService } from './billing.scheduler';
 import { BillingService } from './billing.service';
 
 @Module({
-  imports: [NotificationsModule],
+  imports: [NotificationsModule, ReportingModule],
   controllers: [BillingController, PublicBillingController],
   providers: [BillingService, BillingSchedulerService],
   exports: [BillingService],

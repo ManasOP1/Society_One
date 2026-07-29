@@ -56,12 +56,14 @@ export class BillingController {
     @Query('month') month?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
   ) {
     return this.billing.list(resolveSocietyId(user, societyId), user, {
       status,
       month,
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
+      cursor,
     });
   }
 

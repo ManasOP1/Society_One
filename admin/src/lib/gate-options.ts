@@ -1,0 +1,94 @@
+/** Gate check-in option catalogs — used by public /gate/[token] form. */
+
+export const VISIT_TYPES = [
+  "Food Delivery",
+  "Grocery Delivery",
+  "Shopping Delivery",
+  "Courier",
+  "Uber",
+  "Ola",
+  "Rapido",
+  "Porter",
+  "Maid",
+  "Driver",
+  "Guest",
+  "Friend",
+  "Relative",
+  "Electrician",
+  "Plumber",
+  "Technician",
+  "Housekeeping",
+  "Gas Delivery",
+  "Milk Delivery",
+  "Newspaper",
+  "Maintenance Staff",
+  "Other",
+] as const;
+
+export type CompanyGroup = { group: string; companies: string[] };
+
+export const COMPANY_GROUPS: CompanyGroup[] = [
+  { group: "Food Delivery", companies: ["Zomato", "Swiggy"] },
+  {
+    group: "Instant Delivery",
+    companies: ["Blinkit", "Zepto", "Instamart", "BigBasket", "Dunzo"],
+  },
+  {
+    group: "Courier",
+    companies: [
+      "Blue Dart",
+      "DTDC",
+      "Delhivery",
+      "Ecom Express",
+      "India Post",
+      "XpressBees",
+    ],
+  },
+  { group: "Ride Services", companies: ["Uber", "Ola", "Rapido"] },
+  {
+    group: "Shopping",
+    companies: [
+      "Amazon",
+      "Flipkart",
+      "Myntra",
+      "Ajio",
+      "Meesho",
+      "Nykaa Fashion",
+      "Tata CLiQ",
+      "Reliance Trends",
+      "Lifestyle",
+      "Pantaloons",
+      "Westside",
+      "Zudio",
+      "H&M",
+      "Zara",
+      "Uniqlo",
+      "Max Fashion",
+      "Puma",
+      "Nike",
+      "Adidas",
+      "Levi's",
+      "Woodland",
+      "Decathlon",
+      "Rare Rabbit",
+      "Snitch",
+      "Bewakoof",
+      "The Souled Store",
+      "Bonkers Corner",
+      "Veirdo",
+    ],
+  },
+  { group: "Other", companies: ["Other"] },
+];
+
+export const VEHICLE_TYPES = [
+  "Bike",
+  "Car",
+  "Auto",
+  "Tempo",
+  "Truck",
+  "Cycle",
+  "Walking",
+] as const;
+
+export const FALLBACK_WINGS = ["A", "B", "C", "D", "E"];

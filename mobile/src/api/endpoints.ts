@@ -88,18 +88,23 @@ export const dashboardApi = {
 };
 
 export const invoiceApi = {
-  list: (filters: InvoiceFilters = {}) =>
-    api
+  list: (filters: InvoiceFilters = {}) => {
+    const statusCode =
+      filters.status && filters.status !== 'All'
+        ? filters.status.toUpperCase()
+        : undefined;
+    return api
       .get<Record<string, unknown>[] | { data: Record<string, unknown>[] }>('/invoices', {
         params: {
           limit: 100,
-          status: filters.status && filters.status !== 'All' ? filters.status : undefined,
+          status: statusCode,
           month: filters.month || undefined,
         },
       })
       .then((r) =>
         unwrapListPayload<Record<string, unknown>>(r.data).map(mapInvoice)
-      ) as Promise<Invoice[]>,
+      ) as Promise<Invoice[]>;
+  },
   byNo: (invoiceNo: string) =>
     api
       .get<Record<string, unknown>>(`/invoices/${encodeURIComponent(invoiceNo)}`)
@@ -221,7 +226,9 @@ export const receiptApi = {
 export const noticeApi = {
   list: () =>
     api
-      .get<Record<string, unknown>[] | { data: Record<string, unknown>[] }>('/notices')
+      .get<Record<string, unknown>[] | { data: Record<string, unknown>[] }>('/notices', {
+        params: { limit: 50 },
+      })
       .then((r) =>
         unwrapListPayload<Record<string, unknown>>(r.data).map(mapNotice)
       ) as Promise<SocietyNotice[]>,
@@ -234,7 +241,9 @@ export const noticeApi = {
 export const eventApi = {
   list: () =>
     api
-      .get<Record<string, unknown>[] | { data: Record<string, unknown>[] }>('/events')
+      .get<Record<string, unknown>[] | { data: Record<string, unknown>[] }>('/events', {
+        params: { limit: 50 },
+      })
       .then((r) =>
         unwrapListPayload<Record<string, unknown>>(r.data).map(mapEvent)
       ) as Promise<SocietyEvent[]>,
@@ -247,7 +256,9 @@ export const eventApi = {
 export const visitorApi = {
   list: () =>
     api
-      .get<Record<string, unknown>[] | { data: Record<string, unknown>[] }>('/visitors')
+      .get<Record<string, unknown>[] | { data: Record<string, unknown>[] }>('/visitors', {
+        params: { limit: 50 },
+      })
       .then((r) =>
         unwrapListPayload<Record<string, unknown>>(r.data).map(mapVisitor)
       ) as Promise<SocietyVisitor[]>,

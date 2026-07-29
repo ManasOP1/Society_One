@@ -7,12 +7,15 @@ import { CurrentUser, Roles, type AuthUser } from '../../common/decorators/auth.
 import { readCache } from '../../common/utils/ttl-cache';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PushNotificationService } from '../notifications/push-notification.service';
+import { ReportingModule } from '../reporting/reporting.module';
+import { ReportingService } from '../reporting/reporting.service';
 
 @Injectable()
 export class CommunityService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly push: PushNotificationService,
+    private readonly reporting: ReportingService,
   ) {}
 
   private sid(user: AuthUser) {
@@ -230,13 +233,23 @@ export class CommunityService {
 
     const todayStart = new Date(new Date().toISOString().slice(0, 10));
 
+    /**
+     * Methods: #6 #7 #13 #16 #29
+     * Admin: prefer mv_dashboard_summary (O(1) by society_id).
+     * Resident: live member-scoped aggregates (matview is society-grain).
+     */
+    const matviewSummary =
+      scope === 'admin' ? await this.reporting.readDashboardSummary(societyId) : null;
+
     const [invoiceAgg, next, latestNotice, upcomingEvent, lastReceipt, visitorsToday] =
       await Promise.all([
-        this.prisma.invoice.aggregate({
-          where: outstandingFilter,
-          _sum: { outstanding: true },
-          _count: true,
-        }),
+        matviewSummary
+          ? Promise.resolve(null)
+          : this.prisma.invoice.aggregate({
+              where: outstandingFilter,
+              _sum: { outstanding: true },
+              _count: true,
+            }),
         this.prisma.invoice.findFirst({
           where: outstandingFilter,
           orderBy: { dueDate: 'asc' },
@@ -290,26 +303,34 @@ export class CommunityService {
             invoice: { select: { invoiceNo: true } },
           },
         }),
-        this.prisma.visitor.count({
-          where: {
-            societyId,
-            deletedAt: null,
-            createdAt: { gte: todayStart },
-          },
-        }),
+        matviewSummary
+          ? Promise.resolve(matviewSummary.visitorsToday)
+          : this.prisma.visitor.count({
+              where: {
+                societyId,
+                deletedAt: null,
+                createdAt: { gte: todayStart },
+              },
+            }),
       ]);
 
-    const outstandingTotal = Number(invoiceAgg._sum.outstanding ?? 0);
+    const outstandingTotal = matviewSummary
+      ? matviewSummary.outstandingTotal
+      : Number(invoiceAgg?._sum.outstanding ?? 0);
+    const pendingInvoices = matviewSummary
+      ? matviewSummary.pendingInvoices
+      : invoiceAgg?._count ?? 0;
 
     const payload = {
       outstandingTotal,
       nextDueDate: next?.dueDate?.toISOString().slice(0, 10) ?? null,
       nextDueInvoiceNo: next?.invoiceNo ?? null,
-      pendingInvoices: invoiceAgg._count,
+      pendingInvoices,
       latestNotice,
       upcomingEvent,
       lastReceipt,
-      visitorsToday,
+      visitorsToday: Number(visitorsToday) || 0,
+      source: matviewSummary ? 'matview' : 'live',
     };
     readCache.set(cacheKey, payload, 45_000);
     return payload;
@@ -403,7 +424,7 @@ export class CommunityController {
 
 @Module({
   controllers: [CommunityController],
-  imports: [NotificationsModule],
+  imports: [NotificationsModule, ReportingModule],
   providers: [CommunityService],
   exports: [CommunityService],
 })

@@ -5,7 +5,7 @@
 import { visitorsApi, notifyDataUpdated, apiErrorMessage } from "@/lib/api-client";
 import { cacheKey, readAdminCache, writeAdminCache } from "@/lib/admin-cache";
 
-export type VisitorStatus = "Logged";
+export type VisitorStatus = string;
 
 export interface SocietyVisitor {
   id: string;
@@ -13,9 +13,16 @@ export interface SocietyVisitor {
   name: string;
   flat: string;
   purpose: string;
+  visitType?: string;
+  companyName?: string;
   vehicle: string;
+  vehicleType?: string;
+  vehicleNo?: string;
   expectedTime: string;
+  checkInAt?: string | null;
   phone: string;
+  photoUrl?: string | null;
+  passNumber?: string | null;
   status: VisitorStatus;
   createdAt: string;
 }
@@ -42,16 +49,28 @@ function persistVisitors(societyId: string) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapApiVisitor(raw: any, societyId: string): SocietyVisitor {
+  const statusRaw = String(raw?.status ?? raw?.statusCode ?? "LOGGED");
+  const status =
+    statusRaw === "INSIDE"
+      ? "Inside"
+      : statusRaw.charAt(0) + statusRaw.slice(1).toLowerCase().replace(/_/g, " ");
   return {
     id: raw?.id ?? `vs-${Date.now()}`,
     societyId,
     name: raw?.name ?? "",
     flat: raw?.flat ?? raw?.flatLabel ?? "",
     purpose: raw?.purpose ?? "",
+    visitType: raw?.visitType ?? undefined,
+    companyName: raw?.companyName ?? undefined,
     vehicle: raw?.vehicle || "—",
+    vehicleType: raw?.vehicleType ?? undefined,
+    vehicleNo: raw?.vehicleNo ?? undefined,
     expectedTime: raw?.expectedTime || "",
+    checkInAt: raw?.checkInAt ?? null,
     phone: raw?.phone || "",
-    status: "Logged",
+    photoUrl: raw?.photoUrl ?? null,
+    passNumber: raw?.passNumber ?? null,
+    status,
     createdAt: raw?.createdAt ?? new Date().toISOString(),
   };
 }

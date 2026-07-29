@@ -3,13 +3,18 @@
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, Receipt } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { Role } from '../../common/types/roles';
 import { AuthUser } from '../../common/decorators/auth.decorators';
 import {
   buildPaginationMeta,
+  clampLimit,
+  createdAtIdKeysetWhere,
+  decodeKeysetCursor,
+  encodeKeysetCursor,
   parsePagination,
   resolveListTake,
+  wantsKeyset,
   wantsPagination,
   type PaginatedResult,
 } from '../../common/utils/pagination.util';
@@ -17,26 +22,68 @@ import { toNumber } from '../../common/utils/decimal.util';
 import { readCache } from '../../common/utils/ttl-cache';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 
-function serializeReceipt(
-  r: Receipt & {
-    member?: unknown;
-    invoice?: {
-      invoiceNo?: string;
-      billingMonth?: string;
-      flat?: { flatNo?: string; wing?: { code?: string } | null } | null;
-    } | null;
-  },
-) {
+/** Slim list DTO — method #9 */
+function serializeReceiptList(r: {
+  id: string;
+  receiptNo: string;
+  billingMonth: string;
+  modeCode: string;
+  amount: Prisma.Decimal | number;
+  lateFee: Prisma.Decimal | number;
+  totalPaid: Prisma.Decimal | number;
+  paymentDate: Date;
+  createdAt: Date;
+  utr?: string | null;
+  member?: { id: string; ownerName: string } | null;
+  invoice?: {
+    invoiceNo?: string;
+    flat?: { flatNo?: string; wing?: { code?: string } | null } | null;
+  } | null;
+}) {
   const flat = r.invoice?.flat;
   return {
-    ...r,
+    id: r.id,
+    receiptNo: r.receiptNo,
     month: r.billingMonth,
+    billingMonth: r.billingMonth,
     mode: r.modeCode,
-    amount: toNumber(r.amount),
-    lateFee: toNumber(r.lateFee),
-    totalPaid: toNumber(r.totalPaid),
+    modeCode: r.modeCode,
+    amount: toNumber(r.amount as never),
+    lateFee: toNumber(r.lateFee as never),
+    totalPaid: toNumber(r.totalPaid as never),
+    paymentDate: r.paymentDate,
+    createdAt: r.createdAt,
+    utr: r.utr,
+    member: r.member,
+    ownerName: r.member?.ownerName ?? '',
+    invoiceNo: r.invoice?.invoiceNo ?? '',
     flatNo: flat?.flatNo ?? null,
     wing: flat?.wing?.code ?? null,
+  };
+}
+
+function serializeReceipt(r: {
+  id: string;
+  receiptNo: string;
+  billingMonth: string;
+  modeCode: string;
+  amount: Prisma.Decimal | number;
+  lateFee: Prisma.Decimal | number;
+  totalPaid: Prisma.Decimal | number;
+  paymentDate: Date;
+  createdAt: Date;
+  utr?: string | null;
+  member?: unknown;
+  invoice?: {
+    invoiceNo?: string;
+    billingMonth?: string;
+    flat?: { flatNo?: string; wing?: { code?: string } | null } | null;
+  } | null;
+}) {
+  return {
+    ...serializeReceiptList(r as never),
+    invoice: r.invoice,
+    member: r.member,
   };
 }
 
@@ -47,7 +94,7 @@ export class ReceiptsService {
   async list(
     societyId: string,
     user: AuthUser,
-    filters?: { month?: string; page?: number; limit?: number },
+    filters?: { month?: string; page?: number; limit?: number; cursor?: string },
   ) {
     const where: Prisma.ReceiptWhereInput = { societyId, deletedAt: null };
     if (user.role === Role.RESIDENT) {
@@ -56,27 +103,67 @@ export class ReceiptsService {
     }
     if (filters?.month) where.billingMonth = filters.month;
 
-    const orderBy = { createdAt: 'desc' as const };
-    const include = {
+    const orderBy: Prisma.ReceiptOrderByWithRelationInput[] = [
+      { createdAt: 'desc' },
+      { id: 'desc' },
+    ];
+    const select = {
+      id: true,
+      receiptNo: true,
+      billingMonth: true,
+      modeCode: true,
+      amount: true,
+      lateFee: true,
+      totalPaid: true,
+      paymentDate: true,
+      createdAt: true,
+      utr: true,
       member: { select: { id: true, ownerName: true } },
       invoice: {
         select: {
-          id: true,
           invoiceNo: true,
-          billingMonth: true,
           flat: { select: { flatNo: true, wing: { select: { code: true } } } },
         },
       },
-    };
+    } satisfies Prisma.ReceiptSelect;
+
+    if (wantsKeyset(filters)) {
+      const cursor = decodeKeysetCursor(filters?.cursor);
+      const take = clampLimit(filters?.limit, 50);
+      const keysetWhere: Prisma.ReceiptWhereInput = {
+        AND: [where, cursor ? createdAtIdKeysetWhere(cursor) : {}],
+      };
+      const rows = await this.prisma.receipt.findMany({
+        where: keysetWhere,
+        orderBy,
+        take: take + 1,
+        select,
+      });
+      const hasMore = rows.length > take;
+      const pageRows = hasMore ? rows.slice(0, take) : rows;
+      const data = pageRows.map(serializeReceiptList);
+      const last = pageRows[pageRows.length - 1];
+      return {
+        data,
+        meta: {
+          total: -1,
+          page: 1,
+          limit: take,
+          totalPages: -1,
+          hasMore,
+          nextCursor: hasMore && last ? encodeKeysetCursor(last) : null,
+        },
+      } satisfies PaginatedResult<(typeof data)[number]>;
+    }
 
     if (wantsPagination(filters)) {
       const { skip, take, page, limit } = parsePagination(filters);
       const [total, rows] = await this.prisma.$transaction([
         this.prisma.receipt.count({ where }),
-        this.prisma.receipt.findMany({ where, orderBy, skip, take, include }),
+        this.prisma.receipt.findMany({ where, orderBy, skip, take, select }),
       ]);
-      const result: PaginatedResult<ReturnType<typeof serializeReceipt>> = {
-        data: rows.map(serializeReceipt),
+      const result: PaginatedResult<ReturnType<typeof serializeReceiptList>> = {
+        data: rows.map(serializeReceiptList),
         meta: buildPaginationMeta(total, page, limit),
       };
       return result;
@@ -85,16 +172,16 @@ export class ReceiptsService {
     const roleScope = user.role === Role.RESIDENT ? 'resident' : 'admin';
     const { take } = resolveListTake(filters, roleScope);
     const cacheKey = `receipts:${societyId}:${user.memberId ?? 'admin'}:${filters?.month ?? 'all'}:${take}`;
-    const cached = readCache.get<ReturnType<typeof serializeReceipt>[]>(cacheKey);
+    const cached = readCache.get<ReturnType<typeof serializeReceiptList>[]>(cacheKey);
     if (cached) return cached;
 
     const rows = await this.prisma.receipt.findMany({
       where,
       orderBy,
       take,
-      include,
+      select,
     });
-    const payload = rows.map(serializeReceipt);
+    const payload = rows.map(serializeReceiptList);
     readCache.set(cacheKey, payload, 45_000);
     return payload;
   }
@@ -119,7 +206,7 @@ export class ReceiptsService {
 
   async getById(societyId: string, id: string, user: AuthUser) {
     const receipt = await this.prisma.receipt.findFirst({
-      where: { id, societyId },
+      where: { id, societyId, deletedAt: null },
       include: {
         member: true,
         invoice: {

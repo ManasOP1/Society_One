@@ -21,7 +21,7 @@ async function bootstrap() {
         next();
       });
     }
-    return json({ limit: '2mb' })(req, res, next);
+    return json({ limit: '8mb' })(req, res, next);
   });
 
   const config = app.get(ConfigService);

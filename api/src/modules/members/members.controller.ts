@@ -39,6 +39,11 @@ const CreateMemberSchema = z.object({
 });
 class CreateMemberDto extends createZodDto(CreateMemberSchema) {}
 
+const BulkImportSchema = z.object({
+  rows: z.array(CreateMemberSchema).min(1).max(500),
+});
+class BulkImportDto extends createZodDto(BulkImportSchema) {}
+
 const UpdateMemberSchema = z.object({
   ownerName: z.string().min(1).optional(),
   phone: z.string().optional(),
@@ -69,10 +74,12 @@ export class MembersController {
     @Query('societyId') societyId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
   ) {
     return this.members.list(resolveSocietyId(user, societyId), user, {
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
+      cursor,
     });
   }
 
@@ -84,6 +91,20 @@ export class MembersController {
     @Query('societyId') societyId?: string,
   ) {
     return this.members.getById(resolveSocietyId(user, societyId), id, user);
+  }
+
+  @Post('bulk')
+  @Roles(Role.SUPER_ADMIN, Role.SOCIETY_ADMIN)
+  bulkImport(
+    @Body() body: BulkImportDto,
+    @CurrentUser() user: AuthUser,
+    @Query('societyId') societyId?: string,
+  ) {
+    return this.members.bulkImport(
+      resolveSocietyId(user, societyId),
+      body.rows,
+      user,
+    );
   }
 
   @Post()

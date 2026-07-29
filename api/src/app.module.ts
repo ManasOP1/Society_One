@@ -25,6 +25,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { CommunityModule } from './modules/community/community.module';
 import { HealthModule } from './modules/health/health.module';
+import { ReportingModule } from './modules/reporting/reporting.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { HealthModule } from './modules/health/health.module';
     AuditModule,
     SettingsModule,
     CommunityModule,
+    ReportingModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

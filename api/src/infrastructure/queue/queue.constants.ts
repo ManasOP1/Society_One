@@ -2,6 +2,11 @@ export const QUEUE_BILLING = 'billing';
 export const QUEUE_NOTIFICATIONS = 'notifications';
 export const QUEUE_PDF = 'pdf';
 export const QUEUE_REMINDERS = 'reminders';
+export const QUEUE_REPORTING = 'reporting';
+
+export type RefreshReportingJob = {
+  societyId?: string;
+};
 
 export type GenerateMonthlyBillsJob = {
   societyId: string;
