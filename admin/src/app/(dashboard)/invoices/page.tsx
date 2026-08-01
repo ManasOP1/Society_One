@@ -381,8 +381,8 @@ export default function InvoicesPage() {
             <CardHeader>
               <CardTitle>Reminder preview</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Will simulate WhatsApp to {reminder.count} unpaid flat(s). No real
-                message is sent.
+                WhatsApp is not connected. You can copy this preview — nothing is
+                sent to phones.
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -391,27 +391,17 @@ export default function InvoicesPage() {
               </pre>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setReminder(null)}>
-                  Cancel
+                  Close
                 </Button>
                 <Button
+                  variant="secondary"
                   onClick={() => {
-                    const unpaid = invoices.filter(
-                      (i) =>
-                        i.month === month &&
-                        i.status !== "Paid" &&
-                        i.status !== "Cancelled" &&
-                        i.outstanding > 0
-                    );
-                    whatsappService.sendRemindersForUnpaid(
-                      society.id,
-                      actor,
-                      unpaid
-                    );
+                    void navigator.clipboard?.writeText(reminder.message);
                     setReminder(null);
-                    flash(`Simulated reminders for ${unpaid.length} flat(s)`);
+                    flash("Reminder text copied — WhatsApp not connected");
                   }}
                 >
-                  Confirm send (mock)
+                  Copy text
                 </Button>
               </div>
             </CardContent>

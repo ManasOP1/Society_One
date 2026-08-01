@@ -741,17 +741,15 @@ export default function SettingsPage() {
               {active === "integrations" && (
                 <div className="space-y-4 text-sm text-muted-foreground">
                   <p>
-                    Payment gateway, SMS, and email will connect when the backend
-                    is live. Until then, collections use the mock Pay Now flow
-                    on invoices.
+                    Payment gateway, SMS, email, and WhatsApp connect when a
+                    provider is configured. Until then, collections use manual
+                    Pay / Mark paid on invoices — no simulated delivery.
                   </p>
                   <ul className="list-inside list-disc space-y-1">
                     <li>Razorpay / UPI — planned</li>
                     <li>SMS provider — planned</li>
                     <li>SMTP email — planned</li>
-                    <li>
-                      WhatsApp — simulated reminders only (see WhatsApp log tab)
-                    </li>
+                    <li>WhatsApp — not connected (preview / copy only)</li>
                   </ul>
                 </div>
               )}
@@ -759,13 +757,13 @@ export default function SettingsPage() {
               {active === "whatsapp" && (
                 <div className="space-y-4">
                   <p className="text-sm text-muted-foreground">
-                    Simulated WhatsApp from Invoices → Send Reminder. Nothing is
-                    sent to a real phone.
+                    WhatsApp delivery is not connected. Reminder previews from
+                    Invoices can be copied; nothing is sent to phones.
                   </p>
                   <div className="max-h-80 space-y-2 overflow-y-auto">
                     {!waLogs.length && (
                       <p className="text-sm text-muted-foreground">
-                        No messages yet. Send a reminder from Invoices.
+                        No WhatsApp activity logged.
                       </p>
                     )}
                     {waLogs.map((w) => (

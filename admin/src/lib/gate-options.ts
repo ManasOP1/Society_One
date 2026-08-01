@@ -90,5 +90,3 @@ export const VEHICLE_TYPES = [
   "Cycle",
   "Walking",
 ] as const;
-
-export const FALLBACK_WINGS = ["A", "B", "C", "D", "E"];

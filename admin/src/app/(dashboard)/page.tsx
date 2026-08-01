@@ -70,7 +70,7 @@ export default function DashboardPage() {
 
   const billingMonth = format(new Date(), "yyyy-MM");
   const stats = invoiceService.stats(society.id, billingMonth);
-  const pending = summary?.outstandingTotal ?? stats.outstanding ?? society.pendingMaintenance;
+  const pending = summary?.outstandingTotal ?? stats.outstanding;
   const pendingCount = summary?.pendingInvoices ?? stats.pendingFlats;
 
   return (
@@ -93,10 +93,9 @@ export default function DashboardPage() {
         members={members.length || society.totalMembers}
         flatsOccupied={society.occupiedFlats}
         flatsTotal={society.totalFlats}
-        fund={society.societyFund}
         pending={pending}
-        collected={stats.collected || society.collectedThisMonth}
-        lateFee={society.lateFeeTotal}
+        collected={stats.collected}
+        lateFee={stats.lateFeeTotal ?? 0}
         pendingCount={pendingCount}
         memberRecords={members.length}
       />

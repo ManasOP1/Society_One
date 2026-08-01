@@ -8,7 +8,6 @@ interface HeroStatsProps {
   members: number;
   flatsOccupied: number;
   flatsTotal: number;
-  fund: number;
   pending: number;
   collected: number;
   lateFee: number;
@@ -20,10 +19,10 @@ export function HeroStats({
   members,
   flatsOccupied,
   flatsTotal,
-  fund,
   pending,
   collected,
   lateFee,
+  pendingCount,
   memberRecords,
 }: HeroStatsProps) {
   const memberCount = memberRecords > 0 ? memberRecords : members;
@@ -40,7 +39,10 @@ export function HeroStats({
     {
       title: "Collected this month",
       value: formatCurrency(collected),
-      subtitle: `Late fees recorded: ${formatCurrency(lateFee)}`,
+      subtitle:
+        lateFee > 0
+          ? `Late fees on invoices: ${formatCurrency(lateFee)}`
+          : "From paid invoices this month",
       icon: Wallet,
       className: "bg-gradient-to-br from-[#6EE7B7] to-[#6BCB9A]",
       href: "/payments",
@@ -56,12 +58,12 @@ export function HeroStats({
       action: "arrow" as const,
     },
     {
-      title: "Society fund",
-      value: formatCurrency(fund),
-      subtitle: "Available balance",
+      title: "Open invoices",
+      value: String(pendingCount),
+      subtitle: "Pending / overdue this period",
       icon: Building2,
       className: "bg-gradient-to-br from-[#7DD3FC] to-[#38BDF8]",
-      href: "/finance",
+      href: "/invoices",
       action: "arrow" as const,
     },
   ];

@@ -209,6 +209,7 @@ export const invoiceService = {
     const expected = list.reduce((s, i) => s + i.totalAmount, 0);
     const collected = list.reduce((s, i) => s + i.paidAmount, 0);
     const outstanding = list.reduce((s, i) => s + i.outstanding, 0);
+    const lateFeeTotal = list.reduce((s, i) => s + (i.lateFee || 0), 0);
     const pendingFlats = list.filter(
       (i) => i.status === "Pending" || i.status === "Overdue"
     ).length;
@@ -222,6 +223,7 @@ export const invoiceService = {
       expected,
       collected,
       outstanding,
+      lateFeeTotal,
       percent: expected ? Math.round((collected / expected) * 100) : 0,
       pendingFlats,
       partial,

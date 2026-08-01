@@ -55,15 +55,17 @@ export const whatsappService = {
     };
   },
 
-  /** Simulated send — cycles Pending → Sent → Delivered (or Failed randomly rare) */
+  /**
+   * WhatsApp delivery is not connected — preview/logging only.
+   * Records Failed so the UI never pretends a message was delivered.
+   */
   send(
     invoice: Invoice,
     type: WhatsAppLog["type"],
     actor: string
   ): WhatsAppLog {
     const preview = this.preview(invoice, type);
-    const fail = Math.random() < 0.08;
-    const status: WhatsAppMessageStatus = fail ? "Failed" : "Sent";
+    const status: WhatsAppMessageStatus = "Failed";
     const log: WhatsAppLog = {
       id: `wa-${Date.now()}`,
       societyId: invoice.societyId,
@@ -80,23 +82,12 @@ export const whatsappService = {
     saveAll([log, ...getAll()]);
     auditService.log({
       societyId: invoice.societyId,
-      action: type === "reminder" ? "Reminder Sent" : "WhatsApp Message Simulated",
+      action: "WhatsApp Not Connected",
       entityType: "whatsapp",
       entityId: log.id,
-      details: `${type} to ${invoice.mobile} → ${status}`,
+      details: `${type} to ${invoice.mobile} blocked — provider not configured`,
       actor,
     });
-
-    if (!fail && typeof window !== "undefined") {
-      setTimeout(() => {
-        const all = getAll();
-        const idx = all.findIndex((x) => x.id === log.id);
-        if (idx >= 0) {
-          all[idx] = { ...all[idx], status: "Delivered" };
-          saveAll(all);
-        }
-      }, 1500);
-    }
     return log;
   },
 

@@ -21,52 +21,23 @@ function saveAll(list: Expense[]) {
   storageSet(STORAGE_KEYS.expenses, list);
 }
 
-function ensureSeed(societyId: string) {
+/** Drop legacy demo expenses that were auto-seeded into localStorage. */
+function purgeLegacySeed(societyId: string) {
   const all = getAll();
-  if (all.some((e) => e.societyId === societyId)) return;
-  const seeded: Expense[] = [
-    {
-      id: `exp-${societyId}-1`,
-      societyId,
-      category: "Security",
-      vendor: "SecureGuard Pvt Ltd",
-      amount: 45000,
-      expenseDate: "2026-07-01",
-      billName: "security-july.pdf",
-      remarks: "Monthly security contract",
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: `exp-${societyId}-2`,
-      societyId,
-      category: "Utilities",
-      vendor: "MSEB",
-      amount: 18500,
-      expenseDate: "2026-07-05",
-      billName: "electricity-july.pdf",
-      remarks: "Common area electricity",
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: `exp-${societyId}-3`,
-      societyId,
-      category: "Housekeeping",
-      vendor: "CleanPro Services",
-      amount: 22000,
-      expenseDate: "2026-07-03",
-      billName: "hk-july.pdf",
-      remarks: "Staff wages",
-      createdAt: new Date().toISOString(),
-    },
-  ];
-  saveAll([...seeded, ...all]);
+  const cleaned = all.filter(
+    (e) =>
+      e.id !== `exp-${societyId}-1` &&
+      e.id !== `exp-${societyId}-2` &&
+      e.id !== `exp-${societyId}-3`
+  );
+  if (cleaned.length !== all.length) saveAll(cleaned);
 }
 
 export const expenseService = {
   categories: CATEGORIES,
 
   list(societyId: string): Expense[] {
-    ensureSeed(societyId);
+    purgeLegacySeed(societyId);
     return getAll()
       .filter((e) => e.societyId === societyId)
       .sort((a, b) => b.expenseDate.localeCompare(a.expenseDate));

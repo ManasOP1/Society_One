@@ -13,7 +13,6 @@ import {
 import { apiErrorMessage, gateApi } from "@/lib/api-client";
 import {
   COMPANY_GROUPS,
-  FALLBACK_WINGS,
   VEHICLE_TYPES,
   VISIT_TYPES,
 } from "@/lib/gate-options";
@@ -107,7 +106,7 @@ export default function GateCheckInPage() {
                 code: w.code,
                 label: w.label || `${w.code} Wing`,
               }))
-            : FALLBACK_WINGS.map((c) => ({ code: c, label: `${c} Wing` }));
+            : [];
         setWings(list);
       })
       .catch((e) => {
@@ -557,6 +556,12 @@ export default function GateCheckInPage() {
 
           {step === 4 && (
             <div className="grid grid-cols-2 gap-2">
+              {!wings.length && (
+                <p className="col-span-2 rounded-2xl bg-slate-950 px-4 py-6 text-center text-sm text-slate-400">
+                  No wings configured for this society. Ask the admin to set up
+                  wings in settings.
+                </p>
+              )}
               {wings.map((w) => (
                 <button
                   key={w.code}

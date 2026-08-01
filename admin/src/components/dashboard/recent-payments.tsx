@@ -24,6 +24,11 @@ export function RecentPayments() {
         </button>
       </CardHeader>
       <CardContent className="space-y-2">
+        {!recentPayments.length && (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No payments yet.
+          </p>
+        )}
         {recentPayments.map((payment) => (
           <div
             key={payment.id}

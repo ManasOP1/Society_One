@@ -13,10 +13,11 @@ import {
   Sun,
 } from "lucide-react";
 import { useTheme } from "@/components/shared/theme-provider";
+import { useAuth } from "@/context/auth-context";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const primaryLinks = [
   { href: "/", label: "Dashboard" },
@@ -53,6 +54,16 @@ export function Navbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
+  const { society, isSuperAdmin, superAdminName } = useAuth();
+  const displayName =
+    (isSuperAdmin ? superAdminName : society?.adminName)?.trim() || "Admin";
+  const initials = displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("") || "A";
+  const roleLabel = isSuperAdmin ? "Super admin" : "Admin";
 
   return (
     <>
@@ -127,16 +138,17 @@ export function Navbar() {
               className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
             >
               <Avatar className="h-8 w-8">
-                <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=Jonathan&backgroundColor=b6e3f4" />
                 <AvatarFallback className="bg-[#4F46E5] text-xs text-white">
-                  JS
+                  {initials}
                 </AvatarFallback>
               </Avatar>
               <div className="hidden text-left lg:block">
                 <p className="text-[13px] font-semibold leading-tight text-slate-800 dark:text-slate-100">
-                  Jonathan Smith
+                  {displayName}
                 </p>
-                <p className="text-[11px] leading-tight text-slate-400">Admin</p>
+                <p className="text-[11px] leading-tight text-slate-400">
+                  {roleLabel}
+                </p>
               </div>
               <Settings className="hidden h-4 w-4 text-slate-400 lg:block" />
             </Link>

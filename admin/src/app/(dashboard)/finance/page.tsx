@@ -161,7 +161,7 @@ export default function FinancePage() {
       vendor: form.vendor.trim(),
       amount,
       expenseDate: form.expenseDate,
-      billName: form.billName || "mock-bill.pdf",
+      billName: form.billName || "",
       remarks: form.remarks,
     };
     if (editing) {
@@ -182,7 +182,7 @@ export default function FinancePage() {
       <PageHeader
         eyebrow={society.name}
         title="Finance"
-        description="Society fund overview & expense ledger — collections live under Payments"
+        description="Expense ledger and collection snapshot from invoices/receipts"
         actions={
           <>
             <Button variant="outline" size="sm" onClick={exportExpenses}>
@@ -208,20 +208,14 @@ export default function FinancePage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
           {
-            label: "Society Fund",
-            value: society.societyFund,
-            icon: TrendingUp,
-            color: "text-emerald-600",
-          },
-          {
             label: "Collected (month)",
-            value: monthStats?.collected ?? society.collectedThisMonth,
+            value: monthStats?.collected ?? 0,
             icon: TrendingUp,
             color: "text-indigo-600",
           },
           {
             label: "Pending maintenance",
-            value: monthStats?.outstanding ?? society.pendingMaintenance,
+            value: monthStats?.outstanding ?? 0,
             icon: TrendingDown,
             color: "text-orange-600",
           },
@@ -230,6 +224,12 @@ export default function FinancePage() {
             value: expenseTotal,
             icon: TrendingDown,
             color: "text-sky-600",
+          },
+          {
+            label: "Net (collected − expenses)",
+            value: (monthStats?.collected ?? 0) - expenseTotal,
+            icon: TrendingUp,
+            color: "text-emerald-600",
           },
         ].map((item, i) => (
           <FadeIn key={item.label} delay={i * 0.05}>
@@ -533,7 +533,7 @@ export default function FinancePage() {
               </div>
               <div>
                 <label className="mb-1 block text-xs text-muted-foreground">
-                  Bill upload (mock)
+                  Bill attachment
                 </label>
                 <Input
                   type="file"
@@ -542,7 +542,7 @@ export default function FinancePage() {
                     const file = e.target.files?.[0];
                     setForm((f) => ({
                       ...f,
-                      billName: file?.name ?? "mock-bill.pdf",
+                      billName: file?.name ?? "",
                     }));
                   }}
                 />
