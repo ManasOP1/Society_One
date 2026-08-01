@@ -1,6 +1,10 @@
 /**
- * Persists which notice/event IDs the resident has already seen.
- * First launch seeds current IDs so existing history does not flood the badge.
+ * Persists which notification IDs the resident has already seen.
+ *
+ * Storage shape (v1):
+ *   { "v": 1, "seeded": true, "ids": ["noticeId", "visitor:…", …] }
+ *
+ * Legacy shape (array of ids) is migrated on read.
  */
 
 import * as SecureStore from 'expo-secure-store';
@@ -8,7 +12,12 @@ import { Platform } from 'react-native';
 
 export { unreadNotificationIds } from '@/utils/notification-unread';
 
-const PREFIX = 'societyone.notifSeen.';
+const PREFIX = 'societyone.notifSeen.v1.';
+
+export type SeenStore = {
+  seeded: boolean;
+  ids: Set<string>;
+};
 
 async function readRaw(key: string): Promise<string | null> {
   if (Platform.OS === 'web') {
@@ -26,7 +35,7 @@ async function writeRaw(key: string, value: string): Promise<void> {
     try {
       globalThis.localStorage?.setItem(key, value);
     } catch {
-      /* ignore */
+      /* ignore quota */
     }
     return;
   }
@@ -37,27 +46,57 @@ function storageKey(userId: string, societyId: string) {
   return `${PREFIX}${userId}.${societyId}`;
 }
 
-export async function loadSeenNotificationIds(
+function parseIds(value: unknown): Set<string> {
+  if (!Array.isArray(value)) return new Set();
+  return new Set(value.filter((id): id is string => typeof id === 'string' && id.length > 0));
+}
+
+export async function loadSeenStore(
   userId: string,
   societyId: string,
-): Promise<Set<string> | null> {
-  if (!userId || !societyId) return new Set();
+): Promise<SeenStore | null> {
+  if (!userId || !societyId) return { seeded: true, ids: new Set() };
+
   const raw = await readRaw(storageKey(userId, societyId));
-  if (raw == null) return null; // first launch — caller should seed
+  // Also try legacy key once for migration.
+  const legacyKey = `societyone.notifSeen.${userId}.${societyId}`;
+  const legacyRaw = raw == null ? await readRaw(legacyKey) : null;
+  const payload = raw ?? legacyRaw;
+  if (payload == null) return null;
+
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(parsed.filter((id): id is string => typeof id === 'string'));
+    const parsed = JSON.parse(payload) as unknown;
+    if (Array.isArray(parsed)) {
+      // Legacy: bare id array. Empty array was often a race seed — treat as unseeded
+      // so we can baseline properly on next hydrate with real item ids.
+      if (parsed.length === 0) return null;
+      return { seeded: true, ids: parseIds(parsed) };
+    }
+    if (parsed && typeof parsed === 'object') {
+      const obj = parsed as { v?: number; seeded?: boolean; ids?: unknown };
+      return {
+        seeded: obj.seeded === true,
+        ids: parseIds(obj.ids),
+      };
+    }
+    return null;
   } catch {
-    return new Set();
+    return null;
   }
 }
 
-export async function saveSeenNotificationIds(
+export async function saveSeenStore(
   userId: string,
   societyId: string,
-  ids: Set<string>,
+  store: SeenStore,
 ): Promise<void> {
   if (!userId || !societyId) return;
-  await writeRaw(storageKey(userId, societyId), JSON.stringify([...ids]));
+  await writeRaw(
+    storageKey(userId, societyId),
+    JSON.stringify({
+      v: 1,
+      seeded: store.seeded,
+      ids: [...store.ids],
+    }),
+  );
 }

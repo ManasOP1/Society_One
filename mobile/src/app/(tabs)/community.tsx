@@ -7,8 +7,6 @@ import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { apiErrorMessage } from '@/api/client';
 import type { SocietyEvent, SocietyNotice, SocietyVisitor } from '@/api/types';
 import { AppText } from '@/components/ui/app-text';
-import { OutlineBadge } from '@/components/ui/badge';
-import { Card } from '@/components/ui/card';
 import { Screen } from '@/components/ui/screen';
 import { Segmented } from '@/components/ui/segmented';
 import { ListSkeleton } from '@/components/ui/skeleton';
@@ -30,14 +28,14 @@ type FeedItem =
 
 export default function NotificationsScreen() {
   const [tab, setTab] = useState<Tab>('All');
-  const { markAllRead, markRead, unreadCount, isUnread } = useUnreadNotifications();
+  const { markAllRead, markRead, unreadCount, isUnread, ready } =
+    useUnreadNotifications();
   const notices = useNotices();
   const events = useEvents();
   const visitors = useVisitors();
   const router = useRouter();
+  const theme = useTheme();
 
-  // Refresh lists when opening Notifications; badge drops only when user
-  // opens an item or taps Mark read (not automatically on leaving).
   useFocusEffect(
     useCallback(() => {
       void notices.refetch();
@@ -80,24 +78,27 @@ export default function NotificationsScreen() {
 
   return (
     <Screen topInset tabbed>
-      <View style={styles.titleRow}>
-        <View style={{ flex: 1 }}>
+      <View style={styles.header}>
+        <View style={styles.headerText}>
           <AppText variant="title">Notifications</AppText>
-          <AppText variant="body" color="textSecondary" style={{ marginTop: -Spacing.one }}>
-            Updates for your flat and society
+          <AppText variant="caption" color="textSecondary">
+            {ready && unreadCount > 0
+              ? `${unreadCount} new update${unreadCount === 1 ? '' : 's'}`
+              : 'Notices, visitors & events'}
           </AppText>
         </View>
-        {unreadCount > 0 ? (
+        {ready && unreadCount > 0 ? (
           <Pressable
             onPress={() => void markAllRead()}
+            hitSlop={8}
             style={({ pressed }) => [
-              styles.markReadChip,
+              styles.markRead,
+              { backgroundColor: theme.accentSoft },
               pressed && { opacity: 0.85 },
             ]}
           >
-            <Feather name="check" size={14} color={Brand.ink} />
-            <AppText variant="caption" style={{ color: Brand.ink }}>
-              Mark read
+            <AppText variant="caption" style={{ color: Brand.ink, fontWeight: '600' }}>
+              Mark all read
             </AppText>
           </Pressable>
         ) : null}
@@ -120,10 +121,10 @@ export default function NotificationsScreen() {
         <EmptyState
           icon="bell"
           title="You're all caught up"
-          message="New notices and visitors for your room will show up here."
+          message="New notices and visitors for your flat will show up here."
         />
       ) : (
-        <View style={{ gap: Spacing.one }}>
+        <View style={styles.list}>
           {feed.map((item) => {
             if (item.kind === 'notice') {
               return (
@@ -137,7 +138,7 @@ export default function NotificationsScreen() {
             }
             if (item.kind === 'visitor') {
               return (
-                <VisitorNotifRow
+                <VisitorRow
                   key={item.id}
                   visitor={item.visitor}
                   unread={isUnread(item.id)}
@@ -159,8 +160,6 @@ export default function NotificationsScreen() {
           })}
         </View>
       )}
-
-      {tab === 'All' ? null : null}
     </Screen>
   );
 }
@@ -177,42 +176,38 @@ function NoticeRow({
   const theme = useTheme();
   return (
     <Link href={{ pathname: '/notice/[id]', params: { id: notice.id } }} asChild>
-      <Pressable onPress={onOpen}>
-        <Card style={[styles.card, unread && styles.unreadCard]}>
-          <View style={styles.cardHeader}>
-            <View style={[styles.iconCircle, { backgroundColor: theme.infoSoft }]}>
-              <Feather name="bell" size={18} color={theme.info} />
-              {unread ? <View style={[styles.unreadDot, { backgroundColor: theme.error }]} /> : null}
-            </View>
-            <View style={{ flex: 1, gap: 2 }}>
-              <AppText variant="bodySemi" numberOfLines={1}>
+      <Pressable onPress={onOpen} style={({ pressed }) => pressed && { opacity: 0.92 }}>
+        <View
+          style={[
+            styles.row,
+            { backgroundColor: theme.card, borderColor: theme.border },
+            unread && styles.rowUnread,
+          ]}
+        >
+          <View style={[styles.icon, { backgroundColor: theme.infoSoft }]}>
+            <Feather name="bell" size={18} color={theme.info} />
+          </View>
+          <View style={styles.body}>
+            <View style={styles.topLine}>
+              <AppText variant="bodySemi" numberOfLines={1} style={{ flex: 1 }}>
                 {notice.title}
               </AppText>
-              <AppText variant="caption" color="textSecondary" numberOfLines={2}>
-                {notice.body}
-              </AppText>
+              {unread ? <View style={[styles.dot, { backgroundColor: theme.error }]} /> : null}
             </View>
-            {notice.pinned ? (
-              <OutlineBadge label="Pinned" icon="star" color={theme.warning} />
-            ) : unread ? (
-              <OutlineBadge label="New" color={theme.error} />
-            ) : null}
-          </View>
-          <View style={styles.footer}>
-            <AppText variant="caption" color="textSecondary">
-              Notice
+            <AppText variant="caption" color="textSecondary" numberOfLines={2}>
+              {notice.body}
             </AppText>
             <AppText variant="caption" color="textSecondary">
-              {formatDate(notice.publishedAt)}
+              Notice · {formatDate(notice.publishedAt)}
             </AppText>
           </View>
-        </Card>
+        </View>
       </Pressable>
     </Link>
   );
 }
 
-function VisitorNotifRow({
+function VisitorRow({
   visitor,
   unread,
   onPress,
@@ -225,43 +220,44 @@ function VisitorNotifRow({
   const when = visitor.checkInAt
     ? formatDateTime(visitor.checkInAt)
     : formatDateTime(visitor.createdAt);
+  const vehicle =
+    visitor.vehicleNo
+      ? `${visitor.vehicleType || ''} ${visitor.vehicleNo}`.trim()
+      : null;
+
   return (
-    <Pressable onPress={onPress}>
-      <Card style={[styles.card, unread && styles.unreadCard]}>
-        <View style={styles.cardHeader}>
-          <View style={[styles.iconCircle, { backgroundColor: theme.successSoft, overflow: 'hidden' }]}>
-            {visitor.photoUrl ? (
-              <Image source={{ uri: visitor.photoUrl }} style={styles.thumb} />
-            ) : (
-              <Feather name="user-check" size={18} color={theme.success} />
-            )}
-            {unread ? <View style={[styles.unreadDot, { backgroundColor: theme.error }]} /> : null}
-          </View>
-          <View style={{ flex: 1, gap: 2 }}>
-            <AppText variant="bodySemi" numberOfLines={1}>
-              {visitor.name}
-            </AppText>
-            <AppText variant="caption" color="textSecondary" numberOfLines={2}>
-              {[visitor.visitType || visitor.purpose, `Flat ${visitor.flat}`]
-                .filter(Boolean)
-                .join(' · ')}
-            </AppText>
-          </View>
-          {unread ? (
-            <OutlineBadge label="New" color={theme.error} />
+    <Pressable onPress={onPress} style={({ pressed }) => pressed && { opacity: 0.92 }}>
+      <View
+        style={[
+          styles.row,
+          { backgroundColor: theme.card, borderColor: theme.border },
+          unread && styles.rowUnread,
+        ]}
+      >
+        <View style={[styles.photo, { backgroundColor: theme.cardMuted }]}>
+          {visitor.photoUrl ? (
+            <Image source={{ uri: visitor.photoUrl }} style={styles.photoImg} />
           ) : (
-            <OutlineBadge label="Visitor" color={theme.success} />
+            <Feather name="user" size={20} color={theme.textSecondary} />
           )}
         </View>
-        <View style={styles.footer}>
-          <AppText variant="caption" color="textSecondary">
-            Visitor
+        <View style={styles.body}>
+          <View style={styles.topLine}>
+            <AppText variant="bodySemi" numberOfLines={1} style={{ flex: 1 }}>
+              {visitor.name}
+            </AppText>
+            {unread ? <View style={[styles.dot, { backgroundColor: theme.error }]} /> : null}
+          </View>
+          <AppText variant="caption" color="textSecondary" numberOfLines={1}>
+            {[visitor.visitType || visitor.purpose, `Flat ${visitor.flat}`]
+              .filter(Boolean)
+              .join(' · ')}
           </AppText>
-          <AppText variant="caption" color="textSecondary">
-            {when}
+          <AppText variant="caption" color="textSecondary" numberOfLines={1}>
+            {[when, vehicle].filter(Boolean).join(' · ')}
           </AppText>
         </View>
-      </Card>
+      </View>
     </Pressable>
   );
 }
@@ -281,97 +277,95 @@ function EventRow({
   const monthLabel = Number.isNaN(date.getTime())
     ? '—'
     : date.toLocaleString('en', { month: 'short' });
+
   return (
     <Link href={{ pathname: '/event/[id]', params: { id: event.id } }} asChild>
-      <Pressable onPress={onOpen}>
-        <Card style={[styles.card, unread && styles.unreadCard]}>
-          <View style={styles.cardHeader}>
-            <View style={[styles.dateBox, { backgroundColor: theme.surfaceDark }]}>
-              <AppText variant="heading" style={{ color: theme.accent }}>
-                {dayLabel}
-              </AppText>
-              <AppText variant="caption" style={{ color: theme.accent }}>
-                {monthLabel}
-              </AppText>
-              {unread ? <View style={[styles.unreadDot, { backgroundColor: theme.error }]} /> : null}
-            </View>
-            <View style={{ flex: 1, gap: 2 }}>
-              <AppText variant="bodySemi" numberOfLines={1}>
+      <Pressable onPress={onOpen} style={({ pressed }) => pressed && { opacity: 0.92 }}>
+        <View
+          style={[
+            styles.row,
+            { backgroundColor: theme.card, borderColor: theme.border },
+            unread && styles.rowUnread,
+          ]}
+        >
+          <View style={[styles.dateBox, { backgroundColor: Brand.ink }]}>
+            <AppText variant="bodySemi" style={{ color: Brand.lime }}>
+              {dayLabel}
+            </AppText>
+            <AppText variant="caption" style={{ color: Brand.lime }}>
+              {monthLabel}
+            </AppText>
+          </View>
+          <View style={styles.body}>
+            <View style={styles.topLine}>
+              <AppText variant="bodySemi" numberOfLines={1} style={{ flex: 1 }}>
                 {event.title}
               </AppText>
-              <AppText variant="caption" color="textSecondary" numberOfLines={1}>
-                {event.location}
-              </AppText>
+              {unread ? <View style={[styles.dot, { backgroundColor: theme.error }]} /> : null}
             </View>
-            {unread ? (
-              <OutlineBadge label="New" color={theme.error} />
-            ) : (
-              <OutlineBadge label={event.status} />
-            )}
-          </View>
-          <View style={styles.footer}>
-            <AppText variant="caption" color="textSecondary">
-              Event
+            <AppText variant="caption" color="textSecondary" numberOfLines={1}>
+              {event.location}
             </AppText>
             <AppText variant="caption" color="textSecondary">
-              {formatDate(event.date)}
+              Event · {formatDate(event.date)}
             </AppText>
           </View>
-        </Card>
+        </View>
       </Pressable>
     </Link>
   );
 }
 
 const styles = StyleSheet.create({
-  titleRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.one,
   },
-  markReadChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  headerText: { flex: 1, gap: 2 },
+  markRead: {
     borderRadius: Radius.full,
     paddingHorizontal: Spacing.onehalf,
     paddingVertical: 8,
-    backgroundColor: '#EFF8CD',
   },
-  card: { gap: Spacing.one, padding: Spacing.onehalf + 10 },
-  unreadCard: {
+  list: { gap: Spacing.one },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.onehalf,
+    borderRadius: Radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: Spacing.onehalf + 8,
+  },
+  rowUnread: {
     borderColor: Brand.lime,
     borderWidth: 1.5,
+    backgroundColor: '#FAFDF0',
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.onehalf },
-  iconCircle: {
-    width: 46,
-    height: 46,
+  icon: {
+    width: 44,
+    height: 44,
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  thumb: { width: 46, height: 46 },
-  unreadDot: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderWidth: 1.5,
-    borderColor: '#FFFFFF',
+  photo: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.md,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  photoImg: { width: '100%', height: '100%' },
   dateBox: {
-    width: 52,
-    height: 52,
+    width: 48,
+    height: 48,
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
+  body: { flex: 1, gap: 2, minWidth: 0 },
+  topLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
 });

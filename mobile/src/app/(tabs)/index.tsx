@@ -46,7 +46,7 @@ export default function DashboardScreen() {
   const { user } = useAuth();
   const dashboard = useDashboard();
   const settings = useSocietySettings();
-  const { unreadCount } = useUnreadNotifications();
+  const { unreadCount, ready: notifReady } = useUnreadNotifications();
   const [search, setSearch] = useState('');
   const isAdmin = user?.role === 'admin';
 
@@ -78,7 +78,7 @@ export default function DashboardScreen() {
               <CircleIconButton
                 icon="bell"
                 label="Notifications"
-                badgeCount={unreadCount}
+                badgeCount={notifReady ? unreadCount : 0}
                 onPress={() => router.push('/community')}
               />
             </View>

@@ -1,12 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
 import { useAuth } from '@/context/auth';
 import { useEvents, useNotices, useVisitors } from '@/hooks/queries';
-import {
-  loadSeenNotificationIds,
-  saveSeenNotificationIds,
-} from '@/utils/notification-reads';
+import { loadSeenStore, saveSeenStore } from '@/utils/notification-reads';
 import { unreadNotificationIds } from '@/utils/notification-unread';
 
 type Listener = () => void;
@@ -15,6 +12,7 @@ const listeners = new Set<Listener>();
 let sharedSeen = new Set<string>();
 let sharedScope = '';
 let sharedReady = false;
+let sharedHydrated = false;
 let sharedVersion = 0;
 
 function emit() {
@@ -22,9 +20,16 @@ function emit() {
   listeners.forEach((l) => l());
 }
 
-function setSharedSeen(next: Set<string>, ready = true) {
-  sharedSeen = next;
-  sharedReady = ready;
+function setSharedState(next: {
+  seen?: Set<string>;
+  ready?: boolean;
+  hydrated?: boolean;
+  scope?: string;
+}) {
+  if (next.seen) sharedSeen = next.seen;
+  if (typeof next.ready === 'boolean') sharedReady = next.ready;
+  if (typeof next.hydrated === 'boolean') sharedHydrated = next.hydrated;
+  if (typeof next.scope === 'string') sharedScope = next.scope;
   emit();
 }
 
@@ -33,11 +38,18 @@ async function syncOsBadge(count: number) {
     const Notifications = await import('expo-notifications');
     await Notifications.setBadgeCountAsync(Math.max(0, count));
   } catch {
-    // Expo Go / web may not support badge APIs.
+    /* Expo Go / web */
   }
 }
 
-/** Unread notices + events + flat visitors for the bell badge. */
+/**
+ * Unread notices + events + flat visitors for the bell badge.
+ *
+ * Fixes the “count flashes then disappears on app open” bug:
+ * - Hydrate from disk once per user/society (not on every refetch)
+ * - Never baseline-seed while the feed is still empty, then re-seed as read
+ * - After hydrate, only markRead / markAllRead can clear the badge
+ */
 export function useUnreadNotifications() {
   const { user } = useAuth();
   const userId = user?.id ?? '';
@@ -46,6 +58,7 @@ export function useUnreadNotifications() {
   const events = useEvents();
   const visitors = useVisitors();
   const [version, setVersion] = useState(sharedVersion);
+  const hydrateGen = useRef(0);
 
   useEffect(() => {
     const onChange = () => setVersion(sharedVersion);
@@ -64,57 +77,86 @@ export function useUnreadNotifications() {
     return [...noticeIds, ...eventIds, ...visitorIds];
   }, [notices.data, events.data, visitors.data]);
 
-  const itemKey = itemIds.join('|');
+  const itemCount = itemIds.length;
   const scope = `${userId}:${societyId}`;
   const listsLoaded =
     !notices.isPending && !events.isPending && !visitors.isPending;
+  const stillFetching =
+    notices.isFetching || events.isFetching || visitors.isFetching;
 
   useEffect(() => {
+    if (!userId || !societyId) {
+      hydrateGen.current += 1;
+      setSharedState({
+        seen: new Set(),
+        ready: true,
+        hydrated: false,
+        scope: '',
+      });
+      return;
+    }
+
+    if (!listsLoaded) return;
+
+    // Already hydrated for this login scope — keep in-memory seen (includes markRead).
+    if (sharedHydrated && sharedScope === scope) return;
+
+    // Prevent empty-seed race: queries settled pending=false but refetch still
+    // filling data → wait; otherwise we'd save [] then show everyone as unread
+    // and later wipe the badge when a bad reseed ran.
+    if (itemCount === 0 && stillFetching) return;
+
+    const gen = ++hydrateGen.current;
     let cancelled = false;
 
     (async () => {
-      if (!userId || !societyId) {
-        sharedScope = '';
-        setSharedSeen(new Set(), true);
-        return;
-      }
+      setSharedState({ ready: false, scope });
 
-      if (!listsLoaded) return;
-
-      if (sharedScope !== scope) {
-        sharedScope = scope;
-        sharedReady = false;
-        emit();
-      }
-
-      const stored = await loadSeenNotificationIds(userId, societyId);
-      if (cancelled) return;
+      const stored = await loadSeenStore(userId, societyId);
+      if (cancelled || gen !== hydrateGen.current) return;
 
       if (stored == null) {
-        // First launch: seed current items as seen so only NEW ones show unread.
         const seed = new Set(itemIds);
-        await saveSeenNotificationIds(userId, societyId, seed);
-        if (cancelled) return;
-        setSharedSeen(seed, true);
+        await saveSeenStore(userId, societyId, { seeded: true, ids: seed });
+        if (cancelled || gen !== hydrateGen.current) return;
+        setSharedState({
+          seen: seed,
+          ready: true,
+          hydrated: true,
+          scope,
+        });
         return;
       }
 
-      setSharedSeen(stored, true);
-    })();
+      setSharedState({
+        seen: stored.ids,
+        ready: true,
+        hydrated: true,
+        scope,
+      });
+    })().catch(() => {
+      if (cancelled || gen !== hydrateGen.current) return;
+      setSharedState({
+        seen: new Set(),
+        ready: true,
+        hydrated: true,
+        scope,
+      });
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [scope, userId, societyId, listsLoaded, itemKey, itemIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope, userId, societyId, listsLoaded, itemCount, stillFetching]);
 
   const unreadIds = useMemo(
     () => (sharedReady ? unreadNotificationIds(itemIds, sharedSeen) : []),
-    // version must change whenever sharedSeen mutates
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sharedReady, itemKey, version],
+    [sharedReady, itemIds.join('|'), version],
   );
 
-  const unreadCount = unreadIds.length;
+  const unreadCount = sharedReady ? unreadIds.length : 0;
 
   useEffect(() => {
     if (!sharedReady || Platform.OS === 'web') return;
@@ -127,8 +169,8 @@ export function useUnreadNotifications() {
       if (sharedSeen.has(id)) return;
       const next = new Set(sharedSeen);
       next.add(id);
-      setSharedSeen(next, true);
-      await saveSeenNotificationIds(userId, societyId, next);
+      setSharedState({ seen: next, ready: true, hydrated: true });
+      await saveSeenStore(userId, societyId, { seeded: true, ids: next });
     },
     [userId, societyId],
   );
@@ -137,15 +179,15 @@ export function useUnreadNotifications() {
     if (!userId || !societyId) return;
     const next = new Set(sharedSeen);
     for (const id of itemIds) next.add(id);
-    setSharedSeen(next, true);
-    await saveSeenNotificationIds(userId, societyId, next);
+    setSharedState({ seen: next, ready: true, hydrated: true });
+    await saveSeenStore(userId, societyId, { seeded: true, ids: next });
   }, [userId, societyId, itemIds]);
 
   const isUnread = useCallback(
     (id: string) =>
       sharedReady && Boolean(id) && !sharedSeen.has(id) && itemIds.includes(id),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sharedReady, itemKey, version],
+    [sharedReady, itemIds.join('|'), version],
   );
 
   return {
@@ -154,6 +196,6 @@ export function useUnreadNotifications() {
     isUnread,
     markRead,
     markAllRead,
-    ready: sharedReady && listsLoaded,
+    ready: sharedReady && listsLoaded && sharedHydrated,
   };
 }
